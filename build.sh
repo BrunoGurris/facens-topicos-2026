@@ -46,9 +46,22 @@ need "$PY" "Instale o Python 3."
   exit 1
 }
 
+# Porta do painel: padrao 8765, ou o que vier em --http N / --http=N
+HTTP_PORT=8765
+ARGS=("${@:2}")
+for ((i = 0; i < ${#ARGS[@]}; i++)); do
+  case "${ARGS[$i]}" in
+    --http)   HTTP_PORT="${ARGS[$((i + 1))]:-$HTTP_PORT}" ;;
+    --http=*) HTTP_PORT="${ARGS[$i]#--http=}" ;;
+  esac
+done
+
 echo
 echo "== Painel web =="
+echo "Frontend:  http://localhost:$HTTP_PORT"
+echo "Serial:    rfc2217://localhost:4000 (sobe junto com o simulador)"
+echo
 echo "Agora inicie o simulador no VS Code: F1 -> Wokwi: Start Simulator"
 echo "(o painel conecta sozinho quando ele subir; Ctrl+C encerra)"
 echo
-exec "$PY" tools/plot_timer.py "${@:2}"
+exec "$PY" tools/plot_timer.py "${ARGS[@]}"
