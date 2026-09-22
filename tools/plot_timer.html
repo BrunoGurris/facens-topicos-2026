@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Timer da placa</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<title>Painel da placa</title>
+<script src="chart.umd.min.js"></script>
 <style>
   :root {
     color-scheme: light;
@@ -60,21 +60,74 @@
   .plot.short { height: 110px; }
   #log { max-height: 120px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre; }
   #nolib { display: none; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: flex-end; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group .label { color: var(--text-secondary); font-size: 12px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button, input[type=text], input[type=number] {
+    font: inherit; color: var(--text-primary); background: var(--card);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--text-secondary); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.active { border-color: var(--series-tick); box-shadow: inset 0 0 0 1px var(--series-tick); }
+  input[type=number] { width: 90px; }
+  input[type=text] { width: 220px; }
+  #cmd-msg { color: var(--bad); font-size: 12px; min-height: 1.2em; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Timer da placa (HAL_GetTick)</h1>
+  <h1>Painel da placa — timer (HAL_GetTick) e controle</h1>
   <span id="status">aguardando o Wokwi…</span>
 </header>
 
-<div id="nolib">Não consegui carregar o Chart.js do CDN — precisa de internet para desenhar os gráficos.</div>
+<div id="nolib">Não consegui carregar o Chart.js (tools/chart.umd.min.js) — os gráficos não vão desenhar.</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Controle</h2>
+  <p>Cada botão manda uma linha de texto pela serial; a placa responde <code>ok …</code> ou <code>err …</code> no log abaixo.</p>
+  <div class="controls">
+    <div class="group"><span class="label">LED (PA5)</span>
+      <div class="row">
+        <button data-cmd="led on" id="b-led-on">Ligar</button>
+        <button data-cmd="led off" id="b-led-off">Desligar</button>
+        <button data-cmd="led toggle">Inverter</button>
+      </div>
+    </div>
+    <div class="group"><span class="label">Piscar automático</span>
+      <div class="row">
+        <button data-cmd="blink on" id="b-blink-on">Ligado</button>
+        <button data-cmd="blink off" id="b-blink-off">Desligado</button>
+      </div>
+    </div>
+    <div class="group"><span class="label">Período da piscada (ms)</span>
+      <div class="row">
+        <input type="number" id="period" min="20" max="10000" step="10" value="500">
+        <button id="b-period">Aplicar</button>
+        <button data-cmd="period 100">100</button>
+        <button data-cmd="period 250">250</button>
+        <button data-cmd="period 500">500</button>
+        <button data-cmd="period 1000">1000</button>
+      </div>
+    </div>
+    <div class="group"><span class="label">Comando livre (Enter envia; <code>help</code> lista)</span>
+      <div class="row">
+        <input type="text" id="cmd" placeholder="ex.: period 750" autocomplete="off">
+        <button id="b-cmd">Enviar</button>
+      </div>
+    </div>
+  </div>
+  <div id="cmd-msg"></div>
+</div>
 
 <div class="tiles">
   <div class="tile"><div class="label">Tick atual</div><div class="value"><span id="v-tick">–</span><span class="unit">ms</span></div></div>
   <div class="tile"><div class="label">Tempo ligado</div><div class="value"><span id="v-up">–</span><span class="unit">s</span></div></div>
   <div class="tile"><div class="label">Último intervalo</div><div class="value"><span id="v-dt">–</span><span class="unit">ms</span></div></div>
   <div class="tile"><div class="label">LED</div><div class="value"><span id="v-led">–</span></div></div>
+  <div class="tile"><div class="label">Piscando</div><div class="value"><span id="v-blink">–</span><span class="unit" id="v-period"></span></div></div>
 </div>
 
 <div class="charts">
@@ -85,7 +138,7 @@
   </div>
   <div class="card">
     <h2>Intervalo entre amostras</h2>
-    <p>Diferença de tick entre duas mensagens seguidas. O firmware usa <code>HAL_Delay(500)</code>, então o esperado é ~500 ms.</p>
+    <p>Diferença de tick entre duas mensagens seguidas. Piscando, deve ser igual ao período configurado; parado, a placa manda um status a cada 1000 ms.</p>
     <div class="plot"><canvas id="c-dt"></canvas></div>
   </div>
   <div class="card">
@@ -160,7 +213,29 @@
     $("v-up").textContent = (s.tick / 1000).toFixed(1);
     $("v-dt").textContent = s.dt === null ? "–" : s.dt;
     $("v-led").textContent = s.led ? "ON" : "OFF";
+    $("v-blink").textContent = s.blink ? "sim" : "não";
+    $("v-period").textContent = s.blink ? `${s.period} ms` : "";
+    $("b-led-on").classList.toggle("active", s.led === 1);
+    $("b-led-off").classList.toggle("active", s.led === 0);
+    $("b-blink-on").classList.toggle("active", s.blink === 1);
+    $("b-blink-off").classList.toggle("active", s.blink === 0);
+    if (document.activeElement !== $("period")) $("period").value = s.period;
   }
+
+  async function send(cmd) {
+    $("cmd-msg").textContent = "";
+    try {
+      const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ cmd }) });
+      if (!r.ok) $("cmd-msg").textContent = (await r.json()).error || `erro ${r.status}`;
+    } catch (e) { $("cmd-msg").textContent = "servidor python não respondeu"; }
+  }
+  document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => send(b.dataset.cmd)));
+  $("b-period").addEventListener("click", () => send(`period ${$("period").value}`));
+  $("period").addEventListener("keydown", (e) => { if (e.key === "Enter") send(`period ${$("period").value}`); });
+  const sendFree = () => { const c = $("cmd").value.trim(); if (c) { send(c); $("cmd").value = ""; } };
+  $("b-cmd").addEventListener("click", sendFree);
+  $("cmd").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFree(); });
 
   let pending = false;
   function redraw() {
@@ -182,6 +257,7 @@
     else if (ev.type === "history") { ev.samples.forEach(push); ev.logs.forEach(addLog); redraw(); }
     else if (ev.type === "status") {
       $("status").className = ev.connected ? "on" : "";
+      document.querySelectorAll("button").forEach((b) => (b.disabled = !ev.connected));
       $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
                                              : "sem conexão com o Wokwi (inicie o simulador)";
     } else if (ev.type === "log") addLog(ev.text);

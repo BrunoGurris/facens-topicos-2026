@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* USER CODE END Includes */
@@ -34,6 +35,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define BLINK_PERIOD_DEFAULT_MS 500
+#define BLINK_PERIOD_MIN_MS     20
+#define BLINK_PERIOD_MAX_MS     10000
+#define STATUS_HEARTBEAT_MS     1000   /* status periodico quando nao esta' piscando */
+#define CMD_BUF_SIZE            32
 
 /* USER CODE END PD */
 
@@ -49,6 +56,15 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+static uint8_t  blink_enabled   = 1;
+static uint32_t blink_period_ms = BLINK_PERIOD_DEFAULT_MS;
+static uint32_t last_toggle_ms  = 0;
+static uint32_t last_status_ms  = 0;
+
+/* Linha de comando recebida pela USART2 (ver uart_poll_commands). */
+static char    cmd_buf[CMD_BUF_SIZE];
+static uint8_t cmd_len = 0;
 
 /* USER CODE END PV */
 
@@ -70,15 +86,99 @@ static void uart_print(const char *msg)
   HAL_UART_Transmit(&huart2, (const uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
 }
 
-/* Envia o timer da placa (SysTick, ms desde o boot) e o estado do LED.
- * Formato fixo "tick=<ms> led=<0|1>" -- e' o que tools/plot_timer.py parseia. */
+/* Envia o timer da placa (SysTick, ms desde o boot) e o estado atual.
+ * Formato fixo "tick=<ms> led=<0|1> blink=<0|1> period=<ms>" -- e' o que
+ * tools/plot_timer.py parseia. */
 static void uart_print_status(void)
 {
-  char buf[40];
-  snprintf(buf, sizeof(buf), "tick=%lu led=%d\r\n",
-           (unsigned long)HAL_GetTick(),
-           HAL_GPIO_ReadPin(Led_GPIO_Port, Led_Pin) == GPIO_PIN_SET);
+  char buf[64];
+  last_status_ms = HAL_GetTick();
+  snprintf(buf, sizeof(buf), "tick=%lu led=%d blink=%d period=%lu\r\n",
+           (unsigned long)last_status_ms,
+           HAL_GPIO_ReadPin(Led_GPIO_Port, Led_Pin) == GPIO_PIN_SET,
+           blink_enabled,
+           (unsigned long)blink_period_ms);
   uart_print(buf);
+}
+
+/* Executa uma linha de comando vinda da serial (pagina web ou monitor serial).
+ * Comandos: led on|off|toggle, blink on|off, period <ms>, status, help. */
+static void handle_command(char *cmd)
+{
+  char reply[64];
+
+  if (strcmp(cmd, "led on") == 0)
+    HAL_GPIO_WritePin(Led_GPIO_Port, Led_Pin, GPIO_PIN_SET);
+  else if (strcmp(cmd, "led off") == 0)
+    HAL_GPIO_WritePin(Led_GPIO_Port, Led_Pin, GPIO_PIN_RESET);
+  else if (strcmp(cmd, "led toggle") == 0)
+    HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
+  else if (strcmp(cmd, "blink on") == 0)
+    blink_enabled = 1;
+  else if (strcmp(cmd, "blink off") == 0)
+    blink_enabled = 0;
+  else if (strncmp(cmd, "period ", 7) == 0)
+  {
+    long ms = atol(cmd + 7);
+    if (ms < BLINK_PERIOD_MIN_MS || ms > BLINK_PERIOD_MAX_MS)
+    {
+      snprintf(reply, sizeof(reply), "err period fora de %d..%d ms\r\n",
+               BLINK_PERIOD_MIN_MS, BLINK_PERIOD_MAX_MS);
+      uart_print(reply);
+      return;
+    }
+    blink_period_ms = (uint32_t)ms;
+  }
+  else if (strcmp(cmd, "status") == 0)
+  {
+    /* so' responde com a linha de status abaixo */
+  }
+  else if (strcmp(cmd, "help") == 0)
+  {
+    uart_print("comandos: led on|off|toggle, blink on|off, period <ms>, status, help\r\n");
+    return;
+  }
+  else
+  {
+    snprintf(reply, sizeof(reply), "err comando desconhecido: %s\r\n", cmd);
+    uart_print(reply);
+    return;
+  }
+
+  snprintf(reply, sizeof(reply), "ok %s\r\n", cmd);
+  uart_print(reply);
+  uart_print_status();
+}
+
+/* Le a USART2 sem bloquear (polling do RXNE), monta uma linha e executa no '\n'. */
+static void uart_poll_commands(void)
+{
+  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_ORE))
+    __HAL_UART_CLEAR_OREFLAG(&huart2);
+
+  while (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE))
+  {
+    char c = (char)(huart2.Instance->RDR & 0xFF);
+
+    if (c == '\n' || c == '\r')
+    {
+      if (cmd_len > 0)
+      {
+        cmd_buf[cmd_len] = '\0';
+        handle_command(cmd_buf);
+        cmd_len = 0;
+      }
+    }
+    else if (cmd_len < CMD_BUF_SIZE - 1)
+    {
+      cmd_buf[cmd_len++] = c;
+    }
+    else
+    {
+      cmd_len = 0;   /* linha grande demais: descarta */
+      uart_print("err comando muito longo\r\n");
+    }
+  }
 }
 
 /* Chamado pelo HAL quando ocorre a interrupcao EXTI do botao (PC13). */
@@ -126,6 +226,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   uart_print("Blink iniciado. Pressione o botao para inverter o LED.\r\n");
+  uart_print("Envie 'help' pela serial para ver os comandos.\r\n");
+  uart_print_status();
 
   /* USER CODE END 2 */
 
@@ -136,9 +238,22 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
-    uart_print_status();
-    HAL_Delay(500);
+    uart_poll_commands();
+
+    uint32_t now = HAL_GetTick();
+    if (blink_enabled)
+    {
+      if (now - last_toggle_ms >= blink_period_ms)
+      {
+        last_toggle_ms = now;
+        HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
+        uart_print_status();
+      }
+    }
+    else if (now - last_status_ms >= STATUS_HEARTBEAT_MS)
+    {
+      uart_print_status();
+    }
   }
   /* USER CODE END 3 */
 }

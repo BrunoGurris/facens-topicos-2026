@@ -5,8 +5,8 @@ Projeto base para desenvolver firmware STM32 e testá-lo no simulador
 
 O exemplo pisca um LED em **PA5** a cada 500 ms, imprime o timer da placa e o
 estado do LED no monitor serial, e inverte o LED quando o botão em **PC13** é
-pressionado. Um script em `tools/` mostra esse timer num gráfico em tempo real
-no navegador (seção 5).
+pressionado. Um script em `tools/` abre um painel web com o timer em gráficos
+em tempo real e botões para controlar a placa pela serial (seção 5).
 
 ---
 
@@ -135,13 +135,26 @@ Deve abrir uma aba com a placa Nucleo, o LED piscando, e o monitor serial mostra
 
 ```
 Blink iniciado. Pressione o botao para inverter o LED.
-tick=0 led=1
-tick=500 led=0
-tick=1000 led=1
+Envie 'help' pela serial para ver os comandos.
+tick=0 led=1 blink=1 period=500
+tick=500 led=0 blink=1 period=500
+tick=1000 led=1 blink=1 period=500
 ...
 ```
 
 `tick` é o `HAL_GetTick()`: milissegundos desde o boot, contados pelo SysTick.
+
+A placa também aceita comandos digitados no monitor serial (ou enviados pelo painel web):
+
+| Comando | Efeito |
+|---|---|
+| `led on` / `led off` / `led toggle` | controla o LED diretamente |
+| `blink on` / `blink off` | liga/desliga a piscada automática |
+| `period <ms>` | período da piscada (20 a 10000 ms) |
+| `status` | reenvia a linha `tick=...` |
+| `help` | lista os comandos |
+
+A resposta é `ok <comando>` ou `err <motivo>`.
 
 Clique no botão azul do diagrama para inverter o LED (aparece `Botao pressionado!`).
 
@@ -149,15 +162,21 @@ Clique no botão azul do diagrama para inverter o LED (aparece `Botao pressionad
 
 ---
 
-## 5. Gráfico do timer em tempo real
+## 5. Painel web: gráfico do timer e controle da placa
 
-O script `tools/plot_timer.py` lê a serial da placa simulada e abre uma página
-no navegador com o `HAL_GetTick()`, o intervalo entre amostras e o estado do LED
-atualizando ao vivo.
+O script `tools/plot_timer.py` conecta na serial da placa simulada e abre uma
+página no navegador com:
+
+- gráficos ao vivo do `HAL_GetTick()`, do intervalo entre amostras e do estado do LED;
+- botões para ligar/desligar/inverter o LED, ligar/desligar a piscada e mudar o
+  período, além de um campo para comando livre;
+- o log das respostas da placa (`ok ...` / `err ...`).
 
 Como funciona: o `wokwi.toml` tem `rfc2217ServerPort = 4000`, que faz o Wokwi
-expor a USART2 num servidor TCP. O script conecta nele com `pyserial`, parseia as
-linhas `tick=... led=...` e serve a página em `http://localhost:8765`.
+expor a USART2 num servidor TCP bidirecional. O script conecta nele com
+`pyserial`, parseia as linhas `tick=...` para os gráficos e, quando você clica
+num botão, a página faz `POST /cmd` e o script escreve o comando na serial —
+o firmware lê a RX por polling no loop principal e executa.
 
 Só precisa do `pyserial`:
 
@@ -166,7 +185,10 @@ sudo apt install python3-serial      # Linux
 pip install pyserial                 # Windows / venv
 ```
 
-Rodar:
+Rodar (atalho): `./build.sh` compila o firmware e já abre o painel
+(`./build.sh build` só compila, `./build.sh clean` limpa). No Windows use o Git Bash.
+
+Passo a passo equivalente:
 
 1. `make` e F1 → `Wokwi: Start Simulator` (o servidor da serial só sobe com o simulador).
 2. Em outro terminal: `python3 tools/plot_timer.py` (Windows: `python tools\plot_timer.py`),
@@ -177,7 +199,7 @@ Rodar:
 Opções: `--serial /dev/ttyACM0` (ou `COM3`) para uma placa física,
 `--http 9000` para trocar a porta da página, `--no-open` para não abrir o navegador.
 
-A página usa o Chart.js via CDN, então precisa de internet para desenhar.
+O Chart.js está incluído em `tools/chart.umd.min.js`, então tudo funciona offline.
 
 ---
 
@@ -200,9 +222,11 @@ blink/
 │   ├── Inc/main.h          # defines dos pinos (Led_Pin, User_Button_Pin...)
 │   └── Src/main.c          # SEU CÓDIGO vai aqui (entre USER CODE BEGIN/END)
 ├── Drivers/                # HAL da ST + CMSIS (não mexer)
+├── build.sh                # compila e abre o painel web (./build.sh)
 ├── tools/
-│   ├── plot_timer.py       # ponte serial → navegador (gráfico do timer)
-│   └── plot_timer.html     # a página do gráfico
+│   ├── plot_timer.py       # ponte serial ↔ navegador (gráficos + comandos)
+│   ├── plot_timer.html     # a página do painel
+│   └── chart.umd.min.js    # Chart.js (biblioteca de gráficos, offline)
 ├── diagram.json            # circuito simulado: placa, LED, botão, fios
 ├── wokwi.toml              # firmware, porta GDB e porta da serial (RFC2217)
 ├── Makefile                # build (make / make clean)
@@ -255,4 +279,5 @@ No Windows (Git Bash) os mesmos comandos funcionam.
 | Simulador abre mas nada no serial | Confira `diagram.json`: `$serialMonitor` ligado em PA2/PA3 |
 | Gráfico fica em "sem conexão" | Simulador não está rodando, ou `wokwi.toml` sem `rfc2217ServerPort = 4000` |
 | `No module named 'serial'` | Instale o pyserial (seção 5) |
+| Botões do painel desabilitados | Sem conexão com a serial; ao conectar eles habilitam sozinhos |
 | Pede licença de novo | F1 → `Wokwi: Request a new License` |
