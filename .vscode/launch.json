@@ -2,13 +2,25 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch",
+      "name": "Wokwi Debug (Linux)",
       "type": "cppdbg",
       "request": "launch",
       "cwd": "${workspaceFolder}",
-      "program": "${command:cmake.launchTargetPath}",
+      "program": "${workspaceFolder}/build/debug/build/blink.elf",
       "MIMode": "gdb",
-      "miDebuggerPath": "${command:vscode-embedded.st.gdb}",
+      "miDebuggerPath": "gdb-multiarch",
+      "miDebuggerServerAddress": "localhost:3333",
+      "stopAtConnect": true,
+      "preLaunchTask": "Build"
+    },
+    {
+      "name": "Wokwi Debug (Windows)",
+      "type": "cppdbg",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/build/debug/build/blink.elf",
+      "MIMode": "gdb",
+      "miDebuggerPath": "arm-none-eabi-gdb.exe",
       "miDebuggerServerAddress": "localhost:3333",
       "stopAtConnect": true,
       "preLaunchTask": "Build"

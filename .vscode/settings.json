@@ -1,4 +1,12 @@
 {
-  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-  "cmake.configureOnOpen": true
+  "C_Cpp.default.compilerPath": "arm-none-eabi-gcc",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/Core/Inc",
+    "${workspaceFolder}/Drivers/STM32C0xx_HAL_Driver/Inc",
+    "${workspaceFolder}/Drivers/STM32C0xx_HAL_Driver/Inc/Legacy",
+    "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32C0xx/Include",
+    "${workspaceFolder}/Drivers/CMSIS/Include"
+  ],
+  "C_Cpp.default.defines": ["USE_HAL_DRIVER", "STM32C031xx"],
+  "files.associations": { "*.h": "c" }
 }

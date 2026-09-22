@@ -3,13 +3,18 @@
   "tasks": [
     {
       "label": "Build",
-      "type": "cmake",
-      "command": "build",
+      "type": "shell",
+      "command": "make",
+      "args": ["-j"],
       "problemMatcher": "$gcc",
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      }
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Clean",
+      "type": "shell",
+      "command": "make",
+      "args": ["clean"],
+      "problemMatcher": []
     }
   ]
 }
