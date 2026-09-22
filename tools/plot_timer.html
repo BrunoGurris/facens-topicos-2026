@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timer da placa</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --card: #ffffff;
+    --border: #e4e3df;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --series-tick: #2a78d6;   /* azul  - slot 1 */
+    --series-dt:   #2a78d6;
+    --series-led:  #eb6834;   /* laranja - slot 2 */
+    --ok: #008300;
+    --bad: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --card: #232322;
+      --border: #383835;
+      --grid: #2e2e2c;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --series-tick: #3987e5;
+      --series-dt:   #3987e5;
+      --series-led:  #d95926;
+      --ok: #3ab53a;
+      --bad: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--surface); color: var(--text-primary);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0; }
+  #status { color: var(--text-secondary); }
+  #status::before { content: "●"; margin-right: 6px; color: var(--bad); }
+  #status.on::before { color: var(--ok); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .label { color: var(--text-secondary); font-size: 12px; }
+  .tile .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .unit { font-size: 13px; color: var(--text-secondary); margin-left: 3px; }
+  .charts { display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .card p { margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; }
+  .plot { position: relative; height: 200px; }
+  .plot.short { height: 110px; }
+  #log { max-height: 120px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre; }
+  #nolib { display: none; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Timer da placa (HAL_GetTick)</h1>
+  <span id="status">aguardando o Wokwi…</span>
+</header>
+
+<div id="nolib">Não consegui carregar o Chart.js do CDN — precisa de internet para desenhar os gráficos.</div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Tick atual</div><div class="value"><span id="v-tick">–</span><span class="unit">ms</span></div></div>
+  <div class="tile"><div class="label">Tempo ligado</div><div class="value"><span id="v-up">–</span><span class="unit">s</span></div></div>
+  <div class="tile"><div class="label">Último intervalo</div><div class="value"><span id="v-dt">–</span><span class="unit">ms</span></div></div>
+  <div class="tile"><div class="label">LED</div><div class="value"><span id="v-led">–</span></div></div>
+</div>
+
+<div class="charts">
+  <div class="card">
+    <h2>Tick da placa × tempo do PC</h2>
+    <p>Reta com inclinação 1 = simulação em tempo real. Mais deitada = simulador mais lento que o relógio real.</p>
+    <div class="plot"><canvas id="c-tick"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Intervalo entre amostras</h2>
+    <p>Diferença de tick entre duas mensagens seguidas. O firmware usa <code>HAL_Delay(500)</code>, então o esperado é ~500 ms.</p>
+    <div class="plot"><canvas id="c-dt"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Estado do LED (PA5)</h2>
+    <div class="plot short"><canvas id="c-led"></canvas></div>
+  </div>
+  <div class="card">
+    <h2>Outras mensagens da serial</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  if (typeof Chart === "undefined") { document.getElementById("nolib").style.display = "block"; return; }
+
+  const WINDOW = 120;                        // amostras visiveis (~60 s a 500 ms)
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const $ = (id) => document.getElementById(id);
+
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = css("--text-secondary");
+  Chart.defaults.animation = false;
+
+  function lineChart(canvas, color, yOpts, stepped) {
+    return new Chart(canvas, {
+      type: "line",
+      data: { datasets: [{ data: [], borderColor: color, borderWidth: 2, pointRadius: 0,
+                           pointHoverRadius: 5, pointHoverBackgroundColor: color, stepped: stepped }] },
+      options: {
+        maintainAspectRatio: false,
+        parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => `PC: ${(items[0].parsed.x).toFixed(2)} s`,
+              label: (item) => yOpts.fmt(item.parsed.y, item.raw),
+            },
+          },
+        },
+        scales: {
+          x: { type: "linear", title: { display: true, text: "tempo do PC (s)" },
+               grid: { color: css("--grid") }, ticks: { maxTicksLimit: 8 } },
+          y: { title: { display: true, text: yOpts.title }, grid: { color: css("--grid") },
+               min: yOpts.min, max: yOpts.max, ticks: yOpts.ticks, afterBuildTicks: yOpts.afterBuildTicks },
+        },
+      },
+    });
+  }
+
+  const chTick = lineChart($("c-tick"), css("--series-tick"),
+    { title: "tick (ms)", fmt: (y, r) => `tick = ${y} ms  ·  LED ${r.led ? "ON" : "OFF"}` });
+  const chDt = lineChart($("c-dt"), css("--series-dt"),
+    { title: "intervalo (ms)", min: 0, fmt: (y) => `intervalo = ${y} ms` });
+  const chLed = lineChart($("c-led"), css("--series-led"),
+    { title: "LED", min: -0.1, max: 1.1, ticks: { callback: (v) => v ? "ON" : "OFF" },
+      afterBuildTicks: (scale) => { scale.ticks = [{ value: 0 }, { value: 1 }]; },
+      fmt: (y) => `LED ${y ? "ON" : "OFF"}` }, true);
+
+  function push(s) {
+    const x = s.host_ms / 1000;
+    chTick.data.datasets[0].data.push({ x, y: s.tick, led: s.led });
+    if (s.dt !== null) chDt.data.datasets[0].data.push({ x, y: s.dt });
+    chLed.data.datasets[0].data.push({ x, y: s.led });
+    for (const ch of [chTick, chDt, chLed]) {
+      const d = ch.data.datasets[0].data;
+      if (d.length > WINDOW) d.splice(0, d.length - WINDOW);
+    }
+    $("v-tick").textContent = s.tick;
+    $("v-up").textContent = (s.tick / 1000).toFixed(1);
+    $("v-dt").textContent = s.dt === null ? "–" : s.dt;
+    $("v-led").textContent = s.led ? "ON" : "OFF";
+  }
+
+  let pending = false;
+  function redraw() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; for (const ch of [chTick, chDt, chLed]) ch.update(); });
+  }
+
+  function addLog(text) {
+    const log = $("log");
+    log.textContent += text + "\n";
+    log.scrollTop = log.scrollHeight;
+  }
+
+  const es = new EventSource("/events");
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === "sample") { push(ev); redraw(); }
+    else if (ev.type === "history") { ev.samples.forEach(push); ev.logs.forEach(addLog); redraw(); }
+    else if (ev.type === "status") {
+      $("status").className = ev.connected ? "on" : "";
+      $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
+                                             : "sem conexão com o Wokwi (inicie o simulador)";
+    } else if (ev.type === "log") addLog(ev.text);
+  };
+  es.onerror = () => { $("status").className = ""; $("status").textContent = "servidor python parou"; };
+})();
+</script>
+</body>
+</html>

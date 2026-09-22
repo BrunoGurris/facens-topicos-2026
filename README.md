@@ -3,8 +3,10 @@
 Projeto base para desenvolver firmware STM32 e testá-lo no simulador
 [Wokwi](https://wokwi.com) direto do VS Code, sem precisar da placa física.
 
-O exemplo pisca um LED em **PA5** a cada 500 ms, imprime o estado no monitor
-serial e inverte o LED quando o botão em **PC13** é pressionado.
+O exemplo pisca um LED em **PA5** a cada 500 ms, imprime o timer da placa e o
+estado do LED no monitor serial, e inverte o LED quando o botão em **PC13** é
+pressionado. Um script em `tools/` mostra esse timer num gráfico em tempo real
+no navegador (seção 5).
 
 ---
 
@@ -133,10 +135,13 @@ Deve abrir uma aba com a placa Nucleo, o LED piscando, e o monitor serial mostra
 
 ```
 Blink iniciado. Pressione o botao para inverter o LED.
-LED ON
-LED OFF
+tick=0 led=1
+tick=500 led=0
+tick=1000 led=1
 ...
 ```
+
+`tick` é o `HAL_GetTick()`: milissegundos desde o boot, contados pelo SysTick.
 
 Clique no botão azul do diagrama para inverter o LED (aparece `Botao pressionado!`).
 
@@ -144,7 +149,39 @@ Clique no botão azul do diagrama para inverter o LED (aparece `Botao pressionad
 
 ---
 
-## 5. Depurar (opcional)
+## 5. Gráfico do timer em tempo real
+
+O script `tools/plot_timer.py` lê a serial da placa simulada e abre uma página
+no navegador com o `HAL_GetTick()`, o intervalo entre amostras e o estado do LED
+atualizando ao vivo.
+
+Como funciona: o `wokwi.toml` tem `rfc2217ServerPort = 4000`, que faz o Wokwi
+expor a USART2 num servidor TCP. O script conecta nele com `pyserial`, parseia as
+linhas `tick=... led=...` e serve a página em `http://localhost:8765`.
+
+Só precisa do `pyserial`:
+
+```bash
+sudo apt install python3-serial      # Linux
+pip install pyserial                 # Windows / venv
+```
+
+Rodar:
+
+1. `make` e F1 → `Wokwi: Start Simulator` (o servidor da serial só sobe com o simulador).
+2. Em outro terminal: `python3 tools/plot_timer.py` (Windows: `python tools\plot_timer.py`),
+   ou F1 → `Tasks: Run Task` → **Grafico do timer**.
+3. O navegador abre sozinho. Se o simulador ainda não estiver rodando, a página
+   fica em "sem conexão" e conecta assim que ele iniciar.
+
+Opções: `--serial /dev/ttyACM0` (ou `COM3`) para uma placa física,
+`--http 9000` para trocar a porta da página, `--no-open` para não abrir o navegador.
+
+A página usa o Chart.js via CDN, então precisa de internet para desenhar.
+
+---
+
+## 6. Depurar (opcional)
 
 1. F1 → `Wokwi: Start Simulator and Wait for Debugger`
 2. Vá em *Run and Debug* (Ctrl+Shift+D), escolha **Wokwi Debug (Linux)** ou
@@ -155,7 +192,7 @@ O Wokwi expõe um servidor GDB na porta 3333 (configurado em `wokwi.toml`).
 
 ---
 
-## 6. Estrutura do projeto
+## 7. Estrutura do projeto
 
 ```
 blink/
@@ -163,8 +200,11 @@ blink/
 │   ├── Inc/main.h          # defines dos pinos (Led_Pin, User_Button_Pin...)
 │   └── Src/main.c          # SEU CÓDIGO vai aqui (entre USER CODE BEGIN/END)
 ├── Drivers/                # HAL da ST + CMSIS (não mexer)
+├── tools/
+│   ├── plot_timer.py       # ponte serial → navegador (gráfico do timer)
+│   └── plot_timer.html     # a página do gráfico
 ├── diagram.json            # circuito simulado: placa, LED, botão, fios
-├── wokwi.toml              # diz ao Wokwi onde está o firmware compilado
+├── wokwi.toml              # firmware, porta GDB e porta da serial (RFC2217)
 ├── Makefile                # build (make / make clean)
 ├── STM32C031C6Tx_FLASH.ld  # mapa de memória do chip
 ├── startup_stm32c031xx.s   # código de boot
@@ -189,7 +229,7 @@ Lista de componentes: https://docs.wokwi.com/parts/
 
 ---
 
-## 7. Criando um novo projeto a partir deste
+## 8. Criando um novo projeto a partir deste
 
 ```bash
 cp -r blink meu-projeto
@@ -213,4 +253,6 @@ No Windows (Git Bash) os mesmos comandos funcionam.
 | `arm-none-eabi-gcc: command not found` | Toolchain não instalado ou fora do `PATH` (seção 1) |
 | `make: command not found` (Windows) | Instale o Make (seção 1.2c) e reabra o terminal |
 | Simulador abre mas nada no serial | Confira `diagram.json`: `$serialMonitor` ligado em PA2/PA3 |
+| Gráfico fica em "sem conexão" | Simulador não está rodando, ou `wokwi.toml` sem `rfc2217ServerPort = 4000` |
+| `No module named 'serial'` | Instale o pyserial (seção 5) |
 | Pede licença de novo | F1 → `Wokwi: Request a new License` |

@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <stdio.h>
 #include <string.h>
 
 /* USER CODE END Includes */
@@ -67,6 +68,17 @@ static void MX_USART2_UART_Init(void);
 static void uart_print(const char *msg)
 {
   HAL_UART_Transmit(&huart2, (const uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+}
+
+/* Envia o timer da placa (SysTick, ms desde o boot) e o estado do LED.
+ * Formato fixo "tick=<ms> led=<0|1>" -- e' o que tools/plot_timer.py parseia. */
+static void uart_print_status(void)
+{
+  char buf[40];
+  snprintf(buf, sizeof(buf), "tick=%lu led=%d\r\n",
+           (unsigned long)HAL_GetTick(),
+           HAL_GPIO_ReadPin(Led_GPIO_Port, Led_Pin) == GPIO_PIN_SET);
+  uart_print(buf);
 }
 
 /* Chamado pelo HAL quando ocorre a interrupcao EXTI do botao (PC13). */
@@ -125,7 +137,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
-    uart_print(HAL_GPIO_ReadPin(Led_GPIO_Port, Led_Pin) ? "LED ON\r\n" : "LED OFF\r\n");
+    uart_print_status();
     HAL_Delay(500);
   }
   /* USER CODE END 3 */

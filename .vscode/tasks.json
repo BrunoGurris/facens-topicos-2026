@@ -15,6 +15,15 @@
       "command": "make",
       "args": ["clean"],
       "problemMatcher": []
+    },
+    {
+      "label": "Grafico do timer",
+      "type": "shell",
+      "command": "python3",
+      "windows": { "command": "python" },
+      "args": ["tools/plot_timer.py"],
+      "isBackground": true,
+      "problemMatcher": []
     }
   ]
 }
