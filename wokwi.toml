@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+elf = "build/debug/build/blink.elf"
+firmware = "build/debug/build/blink.hex"
+gdbServerPort = 3333

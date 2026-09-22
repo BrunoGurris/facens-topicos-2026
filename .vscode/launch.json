@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch",
+      "type": "cppdbg",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "program": "${command:cmake.launchTargetPath}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "${command:vscode-embedded.st.gdb}",
+      "miDebuggerServerAddress": "localhost:3333",
+      "stopAtConnect": true,
+      "preLaunchTask": "Build"
+    }
+  ]
+}
