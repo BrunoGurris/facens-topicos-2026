@@ -245,6 +245,37 @@ O Chart.js está incluído em `tools/chart.umd.min.js`, então tudo funciona off
 
 ---
 
+### 5.1 Controle pelo celular (PWA + ngrok)
+
+Em `/m` existe uma versão para celular que pode ser **instalada como app**
+(PWA). Ela tem botões grandes (Normal, Reversa, Emergência, Rearme), um slider
+de velocidade do trem, o mini-mapa do circuito com o trem andando, o estado do
+AMV, o pedido em espera e os últimos eventos. Os botões de simulação (ocupar
+via, obstruir, recolocar trem, reiniciar) ficam na seção recolhível "Simulação".
+
+Para acessar de fora do PC, use o [ngrok](https://ngrok.com). O PWA precisa
+de HTTPS, e o ngrok já entrega:
+
+```bash
+./build.sh run --senha minhasenha     # ou: python3 tools/painel_amv.py --senha minhasenha
+ngrok http 8765                       # em outro terminal
+```
+
+No celular, abra `https://<endereço-do-ngrok>/m`, digite a senha (fica salva
+no aparelho) e instale:
+- **Android (Chrome):** botão "Instalar app na tela inicial" da página, ou menu ⋮ → Instalar app;
+- **iPhone (Safari):** Compartilhar → Adicionar à Tela de Início.
+
+Observações:
+- **Use `--senha`.** Sem ela, qualquer pessoa com o link do ngrok comanda o
+  simulador. O servidor reconhece acesso pelo túnel (cabeçalho `X-Forwarded-For`)
+  e exige a senha só dele. O painel local em `http://localhost:8765` continua livre.
+- O plano grátis do ngrok mostra uma página de aviso na primeira visita: toque em "Visit Site".
+- O app instalado fica preso ao endereço. Como o endereço do ngrok muda a cada
+  execução, use o **domínio estático grátis** do ngrok
+  (`ngrok http --url=<seu-dominio>.ngrok-free.app 8765`) para não ter que reinstalar.
+- O painel completo (`/`) é para uso local: pelo túnel ele não tem a tela de senha.
+
 ## 6. Testes automáticos no PC
 
 ```bash
@@ -312,6 +343,7 @@ blink/
 ├── tools/
 │   ├── painel_amv.py         # ponte serial ↔ navegador
 │   ├── painel_amv.html       # a página do painel
+│   ├── pwa/                  # controle mobile (/m): controle.html, manifest, sw.js, ícones
 │   └── chart.umd.min.js      # Chart.js (offline)
 ├── diagram.json              # circuito simulado: placa, servo, sinal, chaves, botões
 ├── wokwi.toml                # firmware, porta GDB e porta da serial (RFC2217)

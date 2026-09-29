@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a19">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Controle do AMV</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/pwa/icon-192.png">
+<link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --card: #ffffff;
+    --border: #e4e3df;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --rail: #8a8984;
+    --rail-off: #d6d5d0;
+    --accent: #2a78d6;
+    --sig-red: #e34948;
+    --sig-yellow: #e0a100;
+    --sig-green: #008300;
+    --lamp-off: #3a3a38;
+    --occ-line: rgba(227, 73, 72, .35);
+    --train: #2a78d6;
+    --ok: #008300;
+    --bad: #e34948;
+    --danger-bg: #e34948;
+    --danger-text: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --card: #232322;
+      --border: #383835;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --rail: #9d9c95;
+      --rail-off: #4a4a47;
+      --accent: #3987e5;
+      --sig-red: #e66767;
+      --sig-yellow: #f0b429;
+      --sig-green: #3ab53a;
+      --lamp-off: #11110f;
+      --occ-line: rgba(230, 103, 103, .45);
+      --train: #3987e5;
+      --ok: #3ab53a;
+      --bad: #e66767;
+      --danger-bg: #d13c3b;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--surface); color: var(--text-primary); }
+  body {
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    max-width: 520px; margin: 0 auto;
+  }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; }
+  #conn { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
+  #conn.on { background: var(--ok); }
+  #badge { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .label { color: var(--text-secondary); font-size: 12px; }
+  svg { width: 100%; height: auto; display: block; }
+  .rail { stroke: var(--rail-off); stroke-width: 8; stroke-linecap: round; fill: none; }
+  .rail.on { stroke: var(--rail); }
+  .occ-path { fill: none; stroke: var(--occ-line); stroke-width: 22; stroke-linecap: round; }
+  .lamp { stroke: var(--border); stroke-width: 1; }
+  #aviso { color: var(--sig-yellow); font-size: 13px; min-height: 1.3em; margin: 6px 2px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button {
+    font: inherit; font-weight: 600; color: var(--text-primary); background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px; min-height: 52px; padding: 8px 12px;
+    touch-action: manipulation; user-select: none;
+  }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .45; }
+  button.active { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  button.pending { border: 2px dashed var(--sig-yellow); }
+  button.big { font-size: 18px; min-height: 64px; }
+  #b-emg { width: 100%; min-height: 72px; font-size: 20px; letter-spacing: .5px;
+           background: var(--danger-bg); color: var(--danger-text); border: none; margin: 10px 0; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row .grow { flex: 1; }
+  #vel-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
+  input[type=range] { width: 100%; height: 36px; accent-color: var(--accent); }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+  .tile .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .good { color: var(--ok); } .warn { color: var(--sig-yellow); } .bad { color: var(--bad); }
+  #log { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
+  #log .bad { color: var(--bad); }
+  details summary { cursor: pointer; color: var(--text-secondary); padding: 4px 0; }
+  details .grid2 { margin-top: 10px; }
+  #login { display: none; }
+  #login input { font: inherit; width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--border);
+                 background: var(--card); color: var(--text-primary); margin: 8px 0; }
+  #msg { color: var(--bad); font-size: 13px; min-height: 1.2em; }
+  #instalar { display: none; width: 100%; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span id="conn" title="conexão"></span>
+  <h1>AMV</h1>
+  <span id="badge">–</span>
+</header>
+
+<div id="login" class="card">
+  <div><strong>Senha do painel</strong></div>
+  <div class="label">O servidor foi iniciado com <code>--senha</code>. Ela fica salva neste aparelho.</div>
+  <input id="senha" type="password" autocomplete="current-password" placeholder="senha">
+  <button id="b-entrar" style="width:100%">Entrar</button>
+</div>
+
+<div id="app">
+  <button id="instalar">Instalar app na tela inicial</button>
+
+  <div class="card" style="padding:8px">
+    <svg viewBox="40 20 590 270" role="img" aria-label="Circuito com o AMV e o trem">
+      <path id="occ-a" class="occ-path" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250" visibility="hidden"/>
+      <path id="occ-b" class="occ-path" d="M 150 250 L 200 250" visibility="hidden"/>
+      <path id="p-volta" class="rail on" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
+      <path id="p-zona" class="rail on" d="M 150 250 L 200 250"/>
+      <path id="p-n" class="rail" d="M 200 250 L 470 250"/>
+      <path id="p-r" class="rail" d="M 200 250 L 240 210 L 430 210 L 470 250"/>
+      <g>
+        <line id="sig-mast" stroke="var(--rail)" stroke-width="4"/>
+        <rect id="sig-box" width="24" height="60" rx="7" fill="var(--lamp-off)"/>
+        <circle id="lamp-r" r="8" class="lamp" fill="var(--lamp-off)"/>
+        <circle id="lamp-y" r="8" class="lamp" fill="var(--lamp-off)"/>
+        <circle id="lamp-g" r="8" class="lamp" fill="var(--lamp-off)"/>
+      </g>
+      <text id="ang" x="335" y="150" text-anchor="middle" fill="var(--text-secondary)" font-size="20">–</text>
+      <polyline id="train" fill="none" stroke="var(--train)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" visibility="hidden"/>
+    </svg>
+    <div id="aviso"></div>
+  </div>
+
+  <div class="grid2">
+    <button class="big" id="b-n" data-cmd="n">Normal</button>
+    <button class="big" id="b-r" data-cmd="r">Reversa</button>
+  </div>
+
+  <button id="b-emg" data-cmd="emg">EMERGÊNCIA</button>
+  <button id="b-rearme" data-cmd="rearme" style="width:100%">Rearme</button>
+
+  <div class="card" style="margin-top:12px">
+    <div class="row">
+      <div class="grow">
+        <div class="label">Velocidade do trem</div>
+      </div>
+      <div id="vel-val">– km/h</div>
+    </div>
+    <input id="vel" type="range" min="0" max="80" step="5" value="40" aria-label="Velocidade do trem em km/h">
+    <div class="grid2">
+      <button data-cmd="vel 0">Parar trem</button>
+      <button id="b-vel40" data-cmd="vel 40">40 km/h</button>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="label">Sinal</div><div class="v" id="t-sig">–</div></div>
+    <div class="tile"><div class="label">Trem</div><div class="v" id="t-trem">–</div></div>
+    <div class="tile"><div class="label">Freio</div><div class="v" id="t-freio">–</div></div>
+    <div class="tile"><div class="label">Detectada</div><div class="v" id="t-det">–</div></div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="label" style="margin-bottom:6px">Últimos eventos</div>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Simulação</summary>
+      <div class="grid2">
+        <button id="b-occ">Ocupar via</button>
+        <button id="b-obs">Obstruir agulha</button>
+        <button data-cmd="trem">Recolocar trem</button>
+        <button id="b-reboot">Reiniciar tudo</button>
+      </div>
+    </details>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const POS = { N: "Normal", R: "Reversa", "-": "nenhuma", NR: "N e R!" };
+  const FREIO = ["tração", "serviço", "emergência"];
+  const SIG = () => ({ vermelho: css("--sig-red"), amarelo: css("--sig-yellow"), verde: css("--sig-green") });
+
+  // ---------- senha (so' quando o servidor pede) ----------
+  let senha = "";
+  try { senha = localStorage.getItem("amv-senha") || ""; } catch (e) {}
+  const hdr = () => (senha ? { "X-Senha": senha } : {});
+
+  async function autentica() {
+    try {
+      const r = await fetch("/auth", { headers: hdr(), cache: "no-store" });
+      if (r.status === 401) { mostraLogin(true); return false; }
+      mostraLogin(false);
+      return true;
+    } catch (e) { $("msg").textContent = "servidor fora do ar"; return false; }
+  }
+  function mostraLogin(on) {
+    $("login").style.display = on ? "block" : "none";
+    $("app").style.display = on ? "none" : "block";
+  }
+  $("b-entrar").addEventListener("click", async () => {
+    senha = $("senha").value;
+    try { localStorage.setItem("amv-senha", senha); } catch (e) {}
+    if (await autentica()) conecta();
+  });
+
+  // ---------- comandos ----------
+  async function send(cmd) {
+    $("msg").textContent = "";
+    try {
+      const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json", ...hdr() },
+                                      body: JSON.stringify({ cmd }) });
+      if (r.status === 401) return mostraLogin(true);
+      if (!r.ok) $("msg").textContent = (await r.json()).error || `erro ${r.status}`;
+    } catch (e) { $("msg").textContent = "sem conexão com o servidor"; }
+  }
+  document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.cmd === "emg" && navigator.vibrate) navigator.vibrate(200);
+    send(b.dataset.cmd);
+  }));
+  let occ = 0, obs = 0;
+  $("b-occ").addEventListener("click", () => send(`occ ${occ ? 0 : 1}`));
+  $("b-obs").addEventListener("click", () => send(`obs ${obs ? 0 : 1}`));
+  $("b-reboot").addEventListener("click", () => {
+    if (confirm("Reiniciar a placa? Tempo, medições e estado voltam do zero.")) send("reiniciar");
+  });
+
+  // velocidade: o rotulo segue o dedo; o comando sai ao soltar
+  let arrastando = false;
+  const vel = $("vel");
+  vel.addEventListener("input", () => { arrastando = true; $("vel-val").textContent = `${vel.value} km/h`; });
+  vel.addEventListener("change", () => { arrastando = false; send(`vel ${vel.value}`); });
+
+  // ---------- circuito (mesma geometria de tools/painel_amv.html e Core/Inc/amv.h) ----------
+  const L = { volta: 335, zona: 16, N: 86, R: 97 };
+  const S_SINAL = 295, C_TREM = 30;
+  const SEG = { volta: 0, zona: 1, rota: 2 };
+  const P = { volta: $("p-volta"), zona: $("p-zona"), N: $("p-n"), R: $("p-r") };
+  const segKey = (seg, rota) => (seg === 0 ? "volta" : seg === 1 ? "zona" : rota === "R" ? "R" : "N");
+  function pointAt(seg, s, rota) {
+    while (s < 0) { seg = (seg + 2) % 3; s += L[segKey(seg, rota)]; }
+    const k = segKey(seg, rota), path = P[k];
+    return path.getPointAtLength(Math.min(s, L[k]) / L[k] * path.getTotalLength());
+  }
+  (function posicionaSinal() {
+    const p = pointAt(0, S_SINAL, "N");
+    // no celular o sinal fica do lado de DENTRO do oval (fora, cortaria na borda)
+    const dx = 150 - p.x, dy = 150 - p.y, n = Math.hypot(dx, dy) || 1;
+    const hx = p.x + dx / n * 46, hy = p.y + dy / n * 46;
+    const set = (id, a) => Object.entries(a).forEach(([k, v]) => $(id).setAttribute(k, v));
+    set("sig-mast", { x1: p.x + dx / n * 10, y1: p.y + dy / n * 10, x2: hx, y2: hy });
+    set("sig-box", { x: hx - 12, y: hy - 30 });
+    set("lamp-r", { cx: hx, cy: hy - 18 });
+    set("lamp-y", { cx: hx, cy: hy });
+    set("lamp-g", { cx: hx, cy: hy + 18 });
+    const len = P.volta.getTotalLength(), ini = S_SINAL / L.volta * len;
+    $("occ-a").setAttribute("stroke-dasharray", `0 ${ini} ${len - ini} ${len}`);
+  })();
+
+  function mostraEstado(s) {
+    const col = SIG();
+    const travado = s.est === "travado";
+    for (const k of ["N", "R"]) {
+      const lit = travado && s.cmd === k;
+      P[k].classList.toggle("on", lit || s.det === k);
+      P[k].style.stroke = lit ? col[s.sig] : "";
+    }
+    $("lamp-r").setAttribute("fill", s.sig === "vermelho" ? col.vermelho : css("--lamp-off"));
+    $("lamp-y").setAttribute("fill", s.sig === "amarelo" ? col.amarelo : css("--lamp-off"));
+    $("lamp-g").setAttribute("fill", s.sig === "verde" ? col.verde : css("--lamp-off"));
+    const vis = s.occ ? "visible" : "hidden";
+    $("occ-a").setAttribute("visibility", vis);
+    $("occ-b").setAttribute("visibility", vis);
+    $("ang").textContent = `agulha ${(s.ang / 100).toFixed(0)}°`;
+
+    const badge = { travado: [`TRAVADO · ${POS[s.cmd]}`, "--ok"], movendo: [`MOVENDO → ${POS[s.cmd]}`, "--sig-yellow"],
+                    falha: [`FALHA: ${s.falha}`, "--bad"], emergencia: ["EMERGÊNCIA", "--bad"] }[s.est] || [s.est, "--text-secondary"];
+    $("badge").textContent = badge[0];
+    $("badge").style.color = css(badge[1]);
+
+    $("t-sig").textContent = s.sig;
+    $("t-sig").style.color = col[s.sig] || "";
+    $("t-det").textContent = POS[s.det] || s.det;
+
+    const pend = s.pend && s.pend !== "-" ? s.pend : null;
+    $("b-n").classList.toggle("active", s.cmd === "N");
+    $("b-r").classList.toggle("active", s.cmd === "R");
+    $("b-n").classList.toggle("pending", pend === "N");
+    $("b-r").classList.toggle("pending", pend === "R");
+    $("aviso").textContent = pend
+      ? `${POS[pend]} em espera (${s.est === "movendo" ? "manobra em curso" : "trem no circuito"}). Sai sozinho quando liberar.`
+      : s.est === "falha" || s.est === "emergencia" ? "Toque em Rearme para voltar a operar." : "";
+
+    occ = s.occv ?? s.occ; obs = s.obsv ?? s.obs;
+    $("b-occ").classList.toggle("active", !!occ);
+    $("b-obs").classList.toggle("active", !!obs);
+  }
+
+  // trem: posicao estimada entre amostras (chegam a cada 100 ms)
+  let trem = null;
+  function mostraTrem(tr) {
+    trem = { seg: SEG[tr.seg] ?? 0, s: tr.s / 1000, v: tr.v / 1000, rota: tr.rota, desc: tr.desc, at: performance.now() };
+    const kmh = tr.v * 3.6 / 1000;
+    $("t-trem").textContent = tr.desc ? "descarrilou" : `${kmh.toFixed(0)} km/h`;
+    $("t-trem").className = "v" + (tr.desc ? " bad" : "");
+    $("t-freio").textContent = FREIO[tr.freio] ?? "–";
+    $("t-freio").className = "v" + (tr.freio === 2 ? " bad" : tr.freio === 1 ? " warn" : "");
+    if (!arrastando) { vel.value = tr.vmax; $("vel-val").textContent = `${tr.vmax} km/h`; }
+  }
+  function desenhaTrem() {
+    requestAnimationFrame(desenhaTrem);
+    if (!trem) return;
+    const dt = Math.min(0.25, (performance.now() - trem.at) / 1000);
+    const k = segKey(trem.seg, trem.rota);
+    const cabeca = Math.min(trem.s + trem.v * dt, L[k]);
+    const pts = [];
+    for (let i = 0; i <= 10; i++) {
+      const p = pointAt(trem.seg, cabeca - C_TREM + C_TREM * i / 10, trem.rota);
+      pts.push(`${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+    }
+    $("train").setAttribute("points", pts.join(" "));
+    $("train").style.stroke = trem.desc ? css("--bad") : css("--train");
+    $("train").setAttribute("visibility", "visible");
+  }
+  requestAnimationFrame(desenhaTrem);
+
+  function addLog(ev) {
+    if (ev.type !== "ev" && !(ev.text || "").startsWith("err")) return;   // so' eventos e erros
+    const d = document.createElement("div");
+    d.textContent = ev.text.replace(/^ev t=\d+ /, "");
+    if (["falha", "emergencia", "rejeitado"].includes(ev.name) || ev.cancelado
+        || ["passou_vermelho", "descarrilou"].includes(ev.evento) || ev.text.startsWith("err")) d.className = "bad";
+    const log = $("log");
+    log.prepend(d);
+    while (log.childNodes.length > 6) log.removeChild(log.lastChild);
+  }
+
+  function setConectado(ok, txt) {
+    $("conn").classList.toggle("on", ok);
+    $("conn").title = txt;
+    document.querySelectorAll("#app button").forEach((b) => { if (b.id !== "instalar") b.disabled = !ok; });
+    if (!ok) $("badge").textContent = "sem conexão";
+  }
+
+  // ---------- eventos do servidor ----------
+  let es = null;
+  function conecta() {
+    if (es) es.close();
+    es = new EventSource("/events" + (senha ? `?senha=${encodeURIComponent(senha)}` : ""));
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.type === "st") mostraEstado(ev);
+      else if (ev.type === "tr") mostraTrem(ev);
+      else if (ev.type === "ev" || ev.type === "log") addLog(ev);
+      else if (ev.type === "history") {
+        ev.logs.forEach(addLog);
+        if (ev.samples.length) mostraEstado(ev.samples[ev.samples.length - 1]);
+        if (ev.last.tr) mostraTrem(ev.last.tr);
+      } else if (ev.type === "reset") $("log").textContent = "";
+      else if (ev.type === "status") setConectado(ev.connected, ev.connected ? "conectado ao Wokwi" : "Wokwi parado");
+    };
+    es.onerror = () => { setConectado(false, "servidor fora do ar"); };
+  }
+
+  // ---------- PWA ----------
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  let pedidoInstalar = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    pedidoInstalar = e;
+    $("instalar").style.display = "block";
+  });
+  $("instalar").addEventListener("click", async () => {
+    $("instalar").style.display = "none";
+    if (pedidoInstalar) { pedidoInstalar.prompt(); pedidoInstalar = null; }
+  });
+
+  setConectado(false, "conectando…");
+  autentica().then((ok) => { if (ok) conecta(); });
+})();
+</script>
+</body>
+</html>

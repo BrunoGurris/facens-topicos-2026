@@ -4,6 +4,8 @@
 #   ./build.sh          compila e abre o painel
 #   ./build.sh build    so compila
 #   ./build.sh clean    make clean
+#   ./build.sh run --senha minhasenha   painel + controle pelo celular via ngrok
+#                                       (em outro terminal: ngrok http 8765)
 #
 # O simulador em si e' iniciado pelo VS Code (F1 -> Wokwi: Start Simulator);
 # o painel fica esperando e conecta sozinho assim que ele subir.
@@ -59,6 +61,7 @@ done
 echo
 echo "== Painel web =="
 echo "Frontend:  http://localhost:$HTTP_PORT"
+echo "Celular:   http://localhost:$HTTP_PORT/m  (remoto: ngrok http $HTTP_PORT e abra <url>/m)"
 echo "Serial:    rfc2217://localhost:4000 (sobe junto com o simulador)"
 echo
 echo "Agora inicie o simulador no VS Code: F1 -> Wokwi: Start Simulator"

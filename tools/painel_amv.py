@@ -20,10 +20,17 @@ Uso:
   python3 tools/painel_amv.py            # abre o navegador sozinho
   python3 tools/painel_amv.py --no-open  # so imprime a URL
 
+Controle pelo celular (PWA em /m):
+  python3 tools/painel_amv.py --senha minhasenha
+  ngrok http 8765                        # abra https://<...>.ngrok-free.app/m no celular
+  Pedidos que chegam pelo tunel (tem X-Forwarded-For) precisam da senha;
+  o painel local em http://localhost:8765 continua sem senha.
+
 Depende apenas de pyserial (pip install pyserial / apt install python3-serial).
 """
 
 import argparse
+import hmac
 import json
 import queue
 import re
@@ -34,6 +41,7 @@ import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 try:
     import serial
@@ -44,6 +52,18 @@ KV_RE = re.compile(r"(\w+)=(\S+)")
 TOOLS_DIR = Path(__file__).parent
 HTML = (TOOLS_DIR / "painel_amv.html").read_text(encoding="utf-8")
 CHARTJS = (TOOLS_DIR / "chart.umd.min.js").read_bytes()
+PWA_DIR = TOOLS_DIR / "pwa"
+# Arquivos do app mobile (lidos a cada pedido: editar e recarregar ja' vale)
+PWA = {
+    "/m": ("controle.html", "text/html; charset=utf-8"),
+    "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+    "/sw.js": ("sw.js", "application/javascript"),
+    "/pwa/icon-192.png": ("icon-192.png", "image/png"),
+    "/pwa/icon-512.png": ("icon-512.png", "image/png"),
+    "/pwa/icon-maskable-512.png": ("icon-maskable-512.png", "image/png"),
+    "/pwa/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+}
+SENHA = None           # --senha: exigida de quem chega pelo tunel (ngrok)
 
 HISTORY = 600          # amostras "st" guardadas (~150 s a 250 ms)
 history = deque(maxlen=HISTORY)
@@ -147,13 +167,34 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):  # silencia o log por request
         pass
 
+    def remoto(self):
+        """Chegou por um proxy/tunel (ngrok poe X-Forwarded-For)?"""
+        return "X-Forwarded-For" in self.headers or "X-Forwarded-Host" in self.headers
+
+    def autorizado(self):
+        """Local sempre pode. Remoto precisa da senha, se o servidor tiver uma
+        (cabecalho X-Senha, ou ?senha= no /events, que o EventSource nao
+        consegue mandar cabecalho)."""
+        if not self.remoto() or SENHA is None:
+            return True
+        dada = self.headers.get("X-Senha") or parse_qs(urlparse(self.path).query).get("senha", [""])[0]
+        return hmac.compare_digest(dada.encode(), SENHA.encode())
+
     def do_GET(self):
-        if self.path == "/events":
+        path = urlparse(self.path).path
+        if path in ("/events", "/auth") and not self.autorizado():
+            return self.reply(401, b'{"error": "senha incorreta"}')
+        if path == "/events":
             return self.sse()
-        if self.path == "/":
+        if path == "/auth":
+            return self.reply(200, b'{"ok": true}')
+        if path == "/":
             return self.reply(200, HTML.encode(), "text/html; charset=utf-8")
-        if self.path == "/chart.umd.min.js":
+        if path == "/chart.umd.min.js":
             return self.reply(200, CHARTJS, "application/javascript")
+        if path in PWA:
+            nome, ctype = PWA[path]
+            return self.reply(200, (PWA_DIR / nome).read_bytes(), ctype, cache=path != "/sw.js")
         self.send_error(404)
 
     def do_POST(self):
@@ -161,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/cmd":
             self.send_error(404)
             return
+        if not self.autorizado():
+            return self.reply(401, b'{"error": "senha incorreta"}')
         length = int(self.headers.get("Content-Length", 0))
         try:
             cmd = json.loads(self.rfile.read(length)).get("cmd", "").strip()
@@ -177,13 +220,15 @@ class Handler(BaseHTTPRequestHandler):
                 ser.flush()
         except Exception as e:  # noqa: BLE001
             return self.reply(503, json.dumps({"error": str(e)}).encode())
-        print(f"[cmd] {cmd}")
+        print(f"[cmd] {cmd}{'  (remoto)' if self.remoto() else ''}", flush=True)
         broadcast({"type": "log", "text": f"> {cmd}"})
         self.reply(200, b'{"ok": true}')
 
-    def reply(self, code, body, ctype="application/json"):
+    def reply(self, code, body, ctype="application/json", cache=False):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        if not cache:
+            self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -226,7 +271,10 @@ def main():
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--http", type=int, default=8765, help="porta da pagina web (padrao 8765)")
     ap.add_argument("--no-open", action="store_true", help="nao abrir o navegador automaticamente")
+    ap.add_argument("--senha", help="senha exigida de quem acessa pelo tunel (ngrok); local continua livre")
     args = ap.parse_args()
+    global SENHA
+    SENHA = args.senha
 
     threading.Thread(target=serial_reader, args=(args.serial, args.baud), daemon=True).start()
 
@@ -234,6 +282,9 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.http), Handler)
     server.daemon_threads = True
     print(f"[web] painel do AMV em {url}  (Ctrl+C para sair)", flush=True)
+    print(f"[web] controle mobile (PWA) em {url}/m  -- remoto: ngrok http {args.http}", flush=True)
+    if SENHA is None:
+        print("[web] AVISO: sem --senha, qualquer pessoa com o link do ngrok controla o simulador", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:
