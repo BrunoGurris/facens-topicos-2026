@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compila o firmware e sobe o painel web (tools/plot_timer.py).
+# Compila o firmware e sobe o painel web (tools/painel_amv.py).
 #
 #   ./build.sh          compila e abre o painel
 #   ./build.sh build    so compila
@@ -26,8 +26,8 @@ case "${1:-run}" in
   build|run)
     echo "== Compilando firmware =="
     make -j 2>&1 | grep -v "_read\|_write\|_lseek\|_close\|warning: _" || true
-    [ -f build/debug/build/blink.hex ] || { echo "erro: build falhou" >&2; exit 1; }
-    arm-none-eabi-size build/debug/build/blink.elf
+    [ -f build/debug/build/amv.hex ] || { echo "erro: build falhou" >&2; exit 1; }
+    arm-none-eabi-size build/debug/build/amv.elf
     ;;
   *)
     echo "uso: $0 [run|build|clean]" >&2
@@ -64,4 +64,4 @@ echo
 echo "Agora inicie o simulador no VS Code: F1 -> Wokwi: Start Simulator"
 echo "(o painel conecta sozinho quando ele subir; Ctrl+C encerra)"
 echo
-exec "$PY" tools/plot_timer.py "${ARGS[@]}"
+exec "$PY" tools/painel_amv.py "${ARGS[@]}"

@@ -1,8 +1,8 @@
 [wokwi]
 version = 1
-elf = "build/debug/build/blink.elf"
-firmware = "build/debug/build/blink.hex"
+elf = "build/debug/build/amv.elf"
+firmware = "build/debug/build/amv.hex"
 gdbServerPort = 3333
 # Expoe a UART simulada (USART2) como servidor RFC2217 em TCP.
-# E' por aqui que tools/plot_timer.py le o "tick=... led=..." da placa.
+# E' por aqui que tools/painel_amv.py le o estado do AMV e manda comandos.
 rfc2217ServerPort = 4000

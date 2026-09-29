@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-Grafico em tempo real do timer da placa (HAL_GetTick) e painel de controle,
-tudo pela serial do Wokwi.
+Painel web do controlador de AMV (desvio ferroviario), tudo pela serial do Wokwi.
 
 Como funciona:
-  1. O firmware imprime "tick=<ms> led=<0|1> blink=<0|1> period=<ms>" a cada
-     piscada e aceita comandos de texto na RX (led on, blink off, period 250...).
+  1. O firmware manda linhas de texto pela USART2:
+       st ...  estado do AMV a cada 250 ms (posicao, sinal, angulo do motor...)
+       ev ...  eventos (pedido, travado, falha, emergencia, rearme, rejeitado)
+       tm ...  tempos medidos: latencias em us e duracao das manobras em ms
+       stk ... pilha livre de cada tarefa (resposta ao comando "stats")
+     e aceita comandos de texto na RX (n, r, t, emg, rearme, occ 1, obs 1...).
   2. O Wokwi expoe a UART simulada num servidor RFC2217 (porta 4000, ver wokwi.toml).
   3. Este script le/escreve na serial via pyserial e serve uma pagina HTML em
-     http://localhost:8765: os graficos chegam por Server-Sent Events e os
+     http://localhost:8765: os dados chegam por Server-Sent Events e os
      botoes da pagina fazem POST /cmd, que vira uma linha escrita na serial.
 
 Uso:
   make && (F1 -> Wokwi: Start Simulator)
-  python3 tools/plot_timer.py            # abre o navegador sozinho
-  python3 tools/plot_timer.py --no-open  # so imprime a URL
+  python3 tools/painel_amv.py            # abre o navegador sozinho
+  python3 tools/painel_amv.py --no-open  # so imprime a URL
 
 Depende apenas de pyserial (pip install pyserial / apt install python3-serial).
 """
@@ -36,14 +39,15 @@ try:
 except ImportError:
     sys.exit("pyserial nao encontrado: pip install pyserial  (ou apt install python3-serial)")
 
-LINE_RE = re.compile(rb"tick=(\d+)\s+led=([01])\s+blink=([01])\s+period=(\d+)")
+KV_RE = re.compile(r"(\w+)=(\S+)")
 TOOLS_DIR = Path(__file__).parent
-HTML = (TOOLS_DIR / "plot_timer.html").read_text(encoding="utf-8")
+HTML = (TOOLS_DIR / "painel_amv.html").read_text(encoding="utf-8")
 CHARTJS = (TOOLS_DIR / "chart.umd.min.js").read_bytes()
 
-HISTORY = 600          # amostras guardadas para quem abrir a pagina depois
+HISTORY = 600          # amostras "st" guardadas (~150 s a 250 ms)
 history = deque(maxlen=HISTORY)
-logs = deque(maxlen=50)   # ultimas mensagens nao-numericas da serial
+logs = deque(maxlen=100)  # eventos e mensagens de texto
+last = {}              # ultimo "tm" e "stk", para quem abrir a pagina depois
 subscribers = set()    # filas SSE de cada navegador conectado
 lock = threading.Lock()
 write_lock = threading.Lock()
@@ -51,12 +55,39 @@ status = {"connected": False, "error": ""}
 port = None            # porta serial aberta (None enquanto o Wokwi nao sobe)
 
 
+def parse_value(v):
+    """'1234' -> 1234, '10/250' -> [10, 250], resto fica texto."""
+    if v.isdigit():
+        return int(v)
+    if "/" in v:
+        a, _, b = v.partition("/")
+        if a.isdigit() and b.isdigit():
+            return [int(a), int(b)]
+    return v
+
+
+def parse_line(text):
+    """Transforma 'st t=10 est=travado ...' em {'kind': 'st', 't': 10, 'est': 'travado'}."""
+    kind, _, rest = text.partition(" ")
+    if kind not in ("st", "ev", "tm", "stk"):
+        return None
+    data = {"kind": kind}
+    if kind == "ev":
+        # "ev t=123 travado pos=N ..." -> o nome do evento e' a 1a palavra sem '='
+        words = rest.split()
+        data["name"] = next((w for w in words if "=" not in w), "?")
+    data.update({k: parse_value(v) for k, v in KV_RE.findall(rest)})
+    return data
+
+
 def broadcast(event):
     with lock:
-        if event["type"] == "sample":
+        if event["type"] == "st":
             history.append(event)
-        elif event["type"] == "log":
-            logs.append(event["text"])
+        elif event["type"] in ("tm", "stk"):
+            last[event["type"]] = event
+        elif event["type"] in ("ev", "log"):
+            logs.append(event)
         for q in list(subscribers):
             q.put(event)
 
@@ -64,8 +95,8 @@ def broadcast(event):
 def serial_reader(url, baud):
     """Reconecta pra sempre: o Wokwi so abre a porta depois do 'Start Simulator'."""
     global port
-    prev_tick = None
     t0 = None
+    prev_t = None
     while True:
         try:
             with serial.serial_for_url(url, baudrate=baud, timeout=1) as ser:
@@ -77,25 +108,23 @@ def serial_reader(url, baud):
                     raw = ser.readline()
                     if not raw:
                         continue
-                    m = LINE_RE.search(raw)
-                    if not m:
-                        # Outras mensagens (ex.: "Botao pressionado!") viram eventos de log
-                        broadcast({"type": "log", "text": raw.decode(errors="replace").strip()})
+                    text = raw.decode(errors="replace").strip()
+                    if not text:
                         continue
-                    tick, led, blink, period = (int(g) for g in m.groups())
+                    data = parse_line(text)
+                    if data is None:
+                        broadcast({"type": "log", "text": text})
+                        continue
                     now = time.monotonic()
-                    if t0 is None or (prev_tick is not None and tick < prev_tick):
-                        t0, prev_tick = now, None      # placa reiniciou
-                    broadcast({
-                        "type": "sample",
-                        "host_ms": round((now - t0) * 1000),   # relogio do PC
-                        "tick": tick,                          # relogio da placa
-                        "dt": None if prev_tick is None else tick - prev_tick,
-                        "led": led,
-                        "blink": blink,
-                        "period": period,
-                    })
-                    prev_tick = tick
+                    if data["kind"] == "st":
+                        t = data.get("t", 0)
+                        if t0 is None or (prev_t is not None and t < prev_t):
+                            t0 = now            # placa reiniciou
+                        prev_t = t
+                    data["type"] = data.pop("kind")
+                    data["host_ms"] = round((now - (t0 or now)) * 1000)
+                    data["text"] = text
+                    broadcast(data)
         except Exception as e:  # noqa: BLE001 - qualquer falha: avisa e tenta de novo
             port = None
             if status["connected"] or status["error"] != str(e):
@@ -119,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
-        """POST /cmd  {"cmd": "led on"}  ->  escreve "led on\n" na serial."""
+        """POST /cmd  {"cmd": "r"}  ->  escreve "r\\n" na serial."""
         if self.path != "/cmd":
             self.send_error(404)
             return
@@ -157,11 +186,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         q = queue.Queue()
         with lock:
-            snapshot, log_snapshot = list(history), list(logs)
+            snapshot = {"type": "history", "samples": list(history),
+                        "logs": list(logs), "last": dict(last)}
             subscribers.add(q)
         try:
             self.send_event({"type": "status", **status})
-            self.send_event({"type": "history", "samples": snapshot, "logs": log_snapshot})
+            self.send_event(snapshot)
             while True:
                 try:
                     self.send_event(q.get(timeout=15))
@@ -194,7 +224,7 @@ def main():
     url = f"http://localhost:{args.http}"
     server = ThreadingHTTPServer(("127.0.0.1", args.http), Handler)
     server.daemon_threads = True
-    print(f"[web] grafico e controle em {url}  (Ctrl+C para sair)", flush=True)
+    print(f"[web] painel do AMV em {url}  (Ctrl+C para sair)", flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

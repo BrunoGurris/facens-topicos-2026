@@ -13,7 +13,7 @@
 ######################################
 # target
 ######################################
-TARGET = blink
+TARGET = amv
 
 
 ######################################
@@ -37,6 +37,9 @@ BUILD_DIR = build/debug/build
 # C sources
 C_SOURCES =  \
 Core/Src/main.c \
+Core/Src/amv_hw.c \
+Core/Src/amv_tasks.c \
+Core/Src/amv_comm.c \
 Core/Src/stm32c0xx_it.c \
 Core/Src/stm32c0xx_hal_msp.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal.c \
@@ -55,7 +58,12 @@ Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_i2c.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_i2c_ex.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_uart.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_uart_ex.c \
-Core/Src/system_stm32c0xx.c  
+Core/Src/system_stm32c0xx.c \
+Middlewares/Third_Party/FreeRTOS/Source/tasks.c \
+Middlewares/Third_Party/FreeRTOS/Source/queue.c \
+Middlewares/Third_Party/FreeRTOS/Source/list.c \
+Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM0/port.c \
+Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM0/portasm.c
 
 # ASM sources
 ASM_SOURCES =  \
@@ -116,7 +124,9 @@ C_INCLUDES =  \
 -IDrivers/STM32C0xx_HAL_Driver/Inc \
 -IDrivers/STM32C0xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32C0xx/Include \
--IDrivers/CMSIS/Include
+-IDrivers/CMSIS/Include \
+-IMiddlewares/Third_Party/FreeRTOS/Source/include \
+-IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM0
 
 
 # compile gcc flags

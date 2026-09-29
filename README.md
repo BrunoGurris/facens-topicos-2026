@@ -1,12 +1,21 @@
-# blink — STM32 Nucleo-C031C6 simulado no Wokwi (VS Code)
+# AMV: controle de desvio ferroviário com FreeRTOS (STM32 Nucleo-C031C6 no Wokwi)
 
-Projeto base para desenvolver firmware STM32 e testá-lo no simulador
-[Wokwi](https://wokwi.com) direto do VS Code, sem precisar da placa física.
+Trabalho de **Tópicos Especiais II (RTOS embarcados)**. O firmware controla um
+**AMV** (Aparelho de Mudança de Via, o desvio de trilho de trem/metrô) com
+**FreeRTOS**. Ele faz a manobra da máquina de chave, confirma a posição pelos
+detectores de fim de curso, só abre o sinal com o AMV travado e leva tudo ao
+estado seguro em falha ou emergência. Tudo roda no simulador
+[Wokwi](https://wokwi.com) dentro do VS Code, sem a placa física.
 
-O exemplo pisca um LED em **PA5** a cada 500 ms, imprime o timer da placa e o
-estado do LED no monitor serial, e inverte o LED quando o botão em **PC13** é
-pressionado. Um script em `tools/` abre um painel web com o timer em gráficos
-em tempo real e botões para controlar a placa pela serial (seção 5).
+- **6 tarefas** com prioridades fixas e preempção, **5 filas**, **1 mutex**
+  (herança de prioridade), **1 semáforo binário**, tudo com alocação estática.
+- Latências medidas na própria placa (timer de 1 µs) e mostradas ao lado da
+  meta calculada.
+- Painel web (seção 5) com o desenho do pátio, os comandos e a tabela de
+  tempo medido × calculado.
+
+A arquitetura, os fluxogramas e os cálculos de tempo estão em
+**[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
 
 ---
 
@@ -96,10 +105,10 @@ Ao final deve aparecer algo como:
 
 ```
    text    data     bss     dec     hex filename
-   6448      20    1788    8256    2040 build/debug/build/blink.elf
+  26252     280    7360   33892    8464 build/debug/build/amv.elf
 ```
 
-e os arquivos `build/debug/build/blink.elf` e `blink.hex` são gerados. São eles que o Wokwi carrega.
+e os arquivos `build/debug/build/amv.elf` e `amv.hex` são gerados. São eles que o Wokwi carrega.
 
 > Os avisos `_read is not implemented and will always fail` (e `_write`, `_lseek`, `_close`)
 > são normais em firmware bare-metal e podem ser ignorados.
@@ -131,52 +140,68 @@ e os arquivos `build/debug/build/blink.elf` e `blink.hex` são gerados. São ele
 1. Compile: `make` no terminal, ou **Ctrl+Shift+B** no VS Code (tarefa `Build`).
 2. F1 → **`Wokwi: Start Simulator`**.
 
-Deve abrir uma aba com a placa Nucleo, o LED piscando, e o monitor serial mostrando:
+No boot o servo sai de 90° (posição desconhecida) e vai para **Normal (45°)**.
+Quando o detector confirma, o sinal fica **verde**. No monitor serial aparece:
 
 ```
-Blink iniciado. Pressione o botao para inverter o LED.
-Envie 'help' pela serial para ver os comandos.
-tick=0 led=1 blink=1 period=500
-tick=500 led=0 blink=1 period=500
-tick=1000 led=1 blink=1 period=500
+AMV: controle de desvio ferroviario (FreeRTOS V11.1.0)
+st t=250 est=movendo cmd=N det=- sig=vermelho ang=8250 occ=0 obs=0 falha=nenhuma
 ...
+ev t=1612 travado pos=N manobra_ms=1612
+st t=1750 est=travado cmd=N det=N sig=verde ang=4500 occ=0 obs=0 falha=nenhuma
 ```
 
-`tick` é o `HAL_GetTick()`: milissegundos desde o boot, contados pelo SysTick.
+### O circuito (diagram.json)
 
-A placa também aceita comandos digitados no monitor serial (ou enviados pelo painel web):
+| Componente | Pino | Papel |
+|---|---|---|
+| Servo | PA6 (TIM3_CH1) | máquina de chave: 45° = Normal, 135° = Reversa |
+| LEDs vermelho / amarelo / verde | PB0 / PA7 / PB6 | sinal: verde = via direta livre, amarelo = desviada, vermelho = pare |
+| LEDs Det N / Det R | PB4 / PB5 | contatos dos detectores (**simulados** pela tarefa `tPlanta`) |
+| Fios PB4→PA0 e PB5→PA1 | PA0 / PA1 (EXTI) | o controle recebe a detecção por interrupção, como receberia do campo |
+| Chave "Ocupação" | PA4 | trem sobre o AMV: proíbe manobra |
+| Chave "Obstrução" | PB1 | injeta falha: a agulha não encosta e o detector não confirma |
+| Botão verde N/R | PA10 (EXTI) | pede manobra (alterna Normal/Reversa) |
+| Botão amarelo Rearme | PB3 | rearma depois de falha ou emergência |
+| Botão vermelho Emergência | PC13 (EXTI) | estado seguro imediato |
+| LD4 da placa | PA5 | pisca a 1 Hz: CPU e escalonador vivos |
+
+### Comandos pela serial
 
 | Comando | Efeito |
 |---|---|
-| `led on` / `led off` / `led toggle` | controla o LED diretamente |
-| `blink on` / `blink off` | liga/desliga a piscada automática |
-| `period <ms>` | período da piscada (20 a 10000 ms) |
-| `status` | reenvia a linha `tick=...` |
+| `n` / `normal`, `r` / `reversa`, `t` / `alternar` | pede manobra |
+| `emg` | emergência |
+| `rearme` | rearme após falha/emergência |
+| `occ 1` / `occ 0` | simula trem sobre o AMV (soma com a chave física) |
+| `obs 1` / `obs 0` | simula agulha obstruída |
+| `status` | linha `st` na hora |
+| `stats` | tempos medidos (`tm`) e pilha livre de cada tarefa (`stk`) |
 | `help` | lista os comandos |
 
-A resposta é `ok <comando>` ou `err <motivo>`.
-
-Clique no botão azul do diagrama para inverter o LED (aparece `Botao pressionado!`).
+A placa responde `ok <comando>` ou `err <motivo>`. Depois vêm os eventos
+(`ev ... pedido`, `travado`, `rejeitado`, `falha`, `emergencia`, `rearme`).
 
 **Sempre que alterar o código, rode `make` de novo antes de reiniciar o simulador.**
 
 ---
 
-## 5. Painel web: gráfico do timer e controle da placa
+## 5. Painel web: pátio, comandos e tempos
 
-O script `tools/plot_timer.py` conecta na serial da placa simulada e abre uma
+O script `tools/painel_amv.py` conecta na serial da placa simulada e abre uma
 página no navegador com:
 
-- gráficos ao vivo do `HAL_GetTick()`, do intervalo entre amostras e do estado do LED;
-- botões para ligar/desligar/inverter o LED, ligar/desligar a piscada e mudar o
-  período, além de um campo para comando livre;
-- o log das respostas da placa (`ok ...` / `err ...`).
+- o **desenho do pátio**: agulha na posição real do servo, sinal aceso, detectores, trem e obstrução;
+- os botões **Normal / Reversa / Alternar / Emergência / Rearme** e os de simular trem e obstrução;
+- a tabela **tempo medido × tempo calculado** (latência da emergência, da
+  perda de detecção, do pedido, duração da manobra e jitter do motor) com ✓ ou ✕;
+- o gráfico do ângulo da máquina de chave, colorido pelo aspecto do sinal;
+- o log de eventos.
 
 Como funciona: o `wokwi.toml` tem `rfc2217ServerPort = 4000`, que faz o Wokwi
-expor a USART2 num servidor TCP bidirecional. O script conecta nele com
-`pyserial`, parseia as linhas `tick=...` para os gráficos e, quando você clica
-num botão, a página faz `POST /cmd` e o script escreve o comando na serial —
-o firmware lê a RX por polling no loop principal e executa.
+expor a USART2 num servidor TCP. O script conecta nele com `pyserial` e
+interpreta as linhas `st`/`ev`/`tm`/`stk`. Os botões fazem `POST /cmd`, e o
+script escreve o comando na serial.
 
 Só precisa do `pyserial`:
 
@@ -185,14 +210,14 @@ sudo apt install python3-serial      # Linux
 pip install pyserial                 # Windows / venv
 ```
 
-Rodar (atalho): `./build.sh` compila o firmware e já abre o painel
+Atalho: `./build.sh` compila o firmware e já abre o painel
 (`./build.sh build` só compila, `./build.sh clean` limpa). No Windows use o Git Bash.
 
 Passo a passo equivalente:
 
 1. `make` e F1 → `Wokwi: Start Simulator` (o servidor da serial só sobe com o simulador).
-2. Em outro terminal: `python3 tools/plot_timer.py` (Windows: `python tools\plot_timer.py`),
-   ou F1 → `Tasks: Run Task` → **Grafico do timer**.
+2. Em outro terminal: `python3 tools/painel_amv.py` (Windows: `python tools\painel_amv.py`),
+   ou F1 → `Tasks: Run Task` → **Painel do AMV**.
 3. O navegador abre sozinho. Se o simulador ainda não estiver rodando, a página
    fica em "sem conexão" e conecta assim que ele iniciar.
 
@@ -219,31 +244,37 @@ O Wokwi expõe um servidor GDB na porta 3333 (configurado em `wokwi.toml`).
 ```
 blink/
 ├── Core/
-│   ├── Inc/main.h          # defines dos pinos (Led_Pin, User_Button_Pin...)
-│   └── Src/main.c          # SEU CÓDIGO vai aqui (entre USER CODE BEGIN/END)
-├── Drivers/                # HAL da ST + CMSIS (não mexer)
-├── build.sh                # compila e abre o painel web (./build.sh)
+│   ├── Inc/
+│   │   ├── main.h            # mapa de pinos (Det_Normal_Pin, Servo_Pin, Sinal_*...)
+│   │   ├── amv.h             # tipos, tempos (T_MANOBRA_MS...), prioridades, filas
+│   │   └── FreeRTOSConfig.h  # configuração do kernel (tick 1 ms, estático, preemptivo)
+│   └── Src/
+│       ├── main.c            # init do HAL/GPIO/UART e chama amv_start()
+│       ├── amv_tasks.c       # AS TAREFAS: tSeg, tMotor, tInter, tSinal, tPlanta
+│       ├── amv_comm.c        # tComm: protocolo serial e telemetria
+│       ├── amv_hw.c          # servo (TIM3), cronômetro 1 µs (TIM14), ISRs → filas
+│       └── stm32c0xx_it.c    # vetores de interrupção (EXTI, USART2)
+├── Middlewares/Third_Party/FreeRTOS/   # kernel FreeRTOS V11.1.0 (MIT), port ARM_CM0
+├── Drivers/                  # HAL da ST + CMSIS (não mexer)
+├── docs/ARQUITETURA.md       # processo, tarefas, fluxogramas, cálculos de tempo
+├── build.sh                  # compila e abre o painel web (./build.sh)
 ├── tools/
-│   ├── plot_timer.py       # ponte serial ↔ navegador (gráficos + comandos)
-│   ├── plot_timer.html     # a página do painel
-│   └── chart.umd.min.js    # Chart.js (biblioteca de gráficos, offline)
-├── diagram.json            # circuito simulado: placa, LED, botão, fios
-├── wokwi.toml              # firmware, porta GDB e porta da serial (RFC2217)
-├── Makefile                # build (make / make clean)
-├── STM32C031C6Tx_FLASH.ld  # mapa de memória do chip
-├── startup_stm32c031xx.s   # código de boot
-├── blink.ioc               # projeto do STM32CubeMX (para regerar init de periféricos)
-└── .vscode/                # tarefas, debug e extensões recomendadas
+│   ├── painel_amv.py         # ponte serial ↔ navegador
+│   ├── painel_amv.html       # a página do painel
+│   └── chart.umd.min.js      # Chart.js (offline)
+├── diagram.json              # circuito simulado: placa, servo, sinal, chaves, botões
+├── wokwi.toml                # firmware, porta GDB e porta da serial (RFC2217)
+├── Makefile                  # build (make / make clean)
+├── STM32C031C6Tx_FLASH.ld    # mapa de memória do chip
+├── startup_stm32c031xx.s     # código de boot
+├── blink.ioc                 # projeto CubeMX original (NÃO reflete os pinos novos)
+└── .vscode/                  # tarefas, debug e extensões recomendadas
 ```
 
-### Pinos usados
-
-| Pino | Função |
-|---|---|
-| PA5  | LED (`Led_Pin`) |
-| PC13 | Botão (`User_Button_Pin`), interrupção EXTI |
-| PA2  | USART2 TX → monitor serial |
-| PA3  | USART2 RX ← monitor serial |
+> O `blink.ioc` é do projeto original. Os pinos do AMV foram configurados à mão
+> em `main.c`/`main.h`. Se você regerar o código pelo CubeMX, o código entre os
+> `USER CODE BEGIN/END` é preservado, mas o `MX_GPIO_Init` e o
+> `stm32c0xx_it.c` voltariam ao original.
 
 ### Editando o circuito
 
@@ -259,8 +290,8 @@ Lista de componentes: https://docs.wokwi.com/parts/
 cp -r blink meu-projeto
 cd meu-projeto
 rm -rf build
-mv blink.ioc meu-projeto.ioc
-sed -i 's/blink/meu-projeto/g' Makefile CMakeLists.txt wokwi.toml .vscode/launch.json .project .cproject meu-projeto.ioc
+sed -i 's/^TARGET = amv/TARGET = meu-projeto/' Makefile
+sed -i 's#build/amv\.#build/meu-projeto.#g' wokwi.toml .vscode/launch.json build.sh
 make
 ```
 
@@ -273,11 +304,14 @@ No Windows (Git Bash) os mesmos comandos funcionam.
 | Sintoma | Causa / solução |
 |---|---|
 | Comandos `Wokwi:` não aparecem no F1 | Extensão não carregou. F1 → `Developer: Reload Window` |
-| `Wokwi: firmware not found` | Rode `make`; confira se `build/debug/build/blink.hex` existe |
+| `Wokwi: firmware not found` | Rode `make`; confira se `build/debug/build/amv.hex` existe |
 | `arm-none-eabi-gcc: command not found` | Toolchain não instalado ou fora do `PATH` (seção 1) |
 | `make: command not found` (Windows) | Instale o Make (seção 1.2c) e reabra o terminal |
 | Simulador abre mas nada no serial | Confira `diagram.json`: `$serialMonitor` ligado em PA2/PA3 |
-| Gráfico fica em "sem conexão" | Simulador não está rodando, ou `wokwi.toml` sem `rfc2217ServerPort = 4000` |
+| Painel fica em "sem conexão" | Simulador não está rodando, ou `wokwi.toml` sem `rfc2217ServerPort = 4000` |
 | `No module named 'serial'` | Instale o pyserial (seção 5) |
 | Botões do painel desabilitados | Sem conexão com a serial; ao conectar eles habilitam sozinhos |
 | Pede licença de novo | F1 → `Wokwi: Request a new License` |
+| Sinal nunca sai do vermelho | a chave "Obstrução" está ligada, ou houve falha/emergência: tire a obstrução e mande `rearme` |
+| Todo pedido volta `rejeitado motivo=ocupado` | a chave "Ocupação" está ligada (ou `occ 1`); desligue |
+| LEDs congelados e LD4 parou de piscar | `configASSERT` ou estouro de pilha: o firmware entra no estado seguro e para. Use o GDB (seção 6) |

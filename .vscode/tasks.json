@@ -17,11 +17,11 @@
       "problemMatcher": []
     },
     {
-      "label": "Grafico do timer",
+      "label": "Painel do AMV",
       "type": "shell",
       "command": "python3",
       "windows": { "command": "python" },
-      "args": ["tools/plot_timer.py"],
+      "args": ["tools/painel_amv.py"],
       "isBackground": true,
       "problemMatcher": []
     }

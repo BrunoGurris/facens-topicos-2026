@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel do AMV</title>
+<script src="chart.umd.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --card: #ffffff;
+    --border: #e4e3df;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --rail: #8a8984;
+    --rail-off: #d6d5d0;
+    --accent: #2a78d6;
+    --sig-red: #e34948;
+    --sig-yellow: #e0a100;
+    --sig-green: #008300;
+    --lamp-off: #3a3a38;
+    --occ: rgba(227, 73, 72, .14);
+    --ok: #008300;
+    --bad: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface: #1a1a19;
+      --card: #232322;
+      --border: #383835;
+      --grid: #2e2e2c;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --rail: #9d9c95;
+      --rail-off: #4a4a47;
+      --accent: #3987e5;
+      --sig-red: #e66767;
+      --sig-yellow: #f0b429;
+      --sig-green: #3ab53a;
+      --lamp-off: #11110f;
+      --occ: rgba(230, 103, 103, .18);
+      --ok: #3ab53a;
+      --bad: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--surface); color: var(--text-primary);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  h1 { font-size: 18px; margin: 0; }
+  #status { color: var(--text-secondary); }
+  #status::before { content: "●"; margin-right: 6px; color: var(--bad); }
+  #status.on::before { color: var(--ok); }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
+  .card p { margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; }
+  .stack { display: grid; gap: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .tile .label { color: var(--text-secondary); font-size: 12px; }
+  .tile .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .unit { font-size: 12px; color: var(--text-secondary); margin-left: 3px; }
+  .est-travado { color: var(--ok); }
+  .est-falha, .est-emergencia { color: var(--bad); }
+  .est-movendo { color: var(--sig-yellow); }
+  svg { width: 100%; height: auto; display: block; }
+  .rail { stroke: var(--rail-off); stroke-width: 6; stroke-linecap: round; fill: none; }
+  .rail.on { stroke: var(--rail); }
+  .blade { stroke: var(--text-primary); stroke-width: 6; stroke-linecap: round; }
+  .svg-label { fill: var(--text-secondary); font-size: 12px; }
+  .lamp { stroke: var(--border); stroke-width: 1; }
+  .plot { position: relative; height: 200px; }
+  #log { max-height: 220px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre; }
+  #log .ev { color: var(--text-primary); }
+  #log .bad { color: var(--bad); }
+  #nolib { display: none; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; margin-bottom: 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-end; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group .label { color: var(--text-secondary); font-size: 12px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button, input[type=text] {
+    font: inherit; color: var(--text-primary); background: var(--card);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--text-secondary); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  button.danger { border-color: var(--bad); color: var(--bad); font-weight: 600; }
+  input[type=text] { width: 180px; }
+  #cmd-msg { color: var(--bad); font-size: 12px; min-height: 1.2em; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+  td.pass { color: var(--ok); }
+  td.fail { color: var(--bad); font-weight: 600; }
+  .muted { color: var(--text-secondary); font-size: 12px; }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Painel do AMV: controle de desvio ferroviário (FreeRTOS)</h1>
+  <span id="status">aguardando o Wokwi…</span>
+</header>
+
+<div id="nolib">Não consegui carregar o Chart.js (tools/chart.umd.min.js), então o gráfico não vai aparecer.</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Pátio</h2>
+    <p>A agulha segue o ângulo real da máquina de chave. O trecho iluminado é a rota que o sinal está liberando.</p>
+    <svg viewBox="0 0 600 220" role="img" aria-label="Diagrama do AMV">
+      <rect id="occ-zone" x="190" y="30" width="170" height="120" rx="8" fill="var(--occ)" visibility="hidden"/>
+      <text id="occ-label" x="275" y="48" text-anchor="middle" class="svg-label" visibility="hidden">TREM SOBRE O AMV</text>
+      <!-- via de chegada -->
+      <line class="rail on" x1="20" y1="130" x2="210" y2="130"/>
+      <!-- rota normal (reta) e reversa (desviada) -->
+      <line id="r-normal" class="rail" x1="290" y1="130" x2="580" y2="130"/>
+      <polyline id="r-reversa" class="rail" points="290,112 400,60 580,60"/>
+      <!-- agulha (pivo em 210,130) -->
+      <line id="blade" class="blade" x1="210" y1="130" x2="290" y2="130"/>
+      <circle cx="210" cy="130" r="5" fill="var(--text-primary)"/>
+      <text id="obs-mark" x="300" y="126" class="svg-label" fill="var(--bad)" visibility="hidden" style="fill:var(--bad);font-weight:700">✕ obstrução</text>
+      <!-- detectores -->
+      <circle id="det-n" cx="560" cy="160" r="7" class="lamp" fill="var(--lamp-off)"/>
+      <text x="545" y="164" text-anchor="end" class="svg-label">Det N</text>
+      <circle id="det-r" cx="560" cy="90" r="7" class="lamp" fill="var(--lamp-off)"/>
+      <text x="545" y="94" text-anchor="end" class="svg-label">Det R</text>
+      <text x="580" y="150" text-anchor="end" class="svg-label">Normal (reta)</text>
+      <text x="580" y="50" text-anchor="end" class="svg-label">Reversa (desviada)</text>
+      <!-- sinal de protecao -->
+      <line x1="120" y1="130" x2="120" y2="110" stroke="var(--rail)" stroke-width="3"/>
+      <rect x="104" y="20" width="32" height="92" rx="8" fill="var(--lamp-off)"/>
+      <circle id="lamp-r" cx="120" cy="38"  r="10" class="lamp" fill="var(--lamp-off)"/>
+      <circle id="lamp-y" cx="120" cy="66"  r="10" class="lamp" fill="var(--lamp-off)"/>
+      <circle id="lamp-g" cx="120" cy="94"  r="10" class="lamp" fill="var(--lamp-off)"/>
+      <text x="120" y="160" text-anchor="middle" class="svg-label">Sinal</text>
+      <text x="20" y="160" class="svg-label">→ sentido do trem</text>
+      <text id="ang-label" x="210" y="200" class="svg-label">ângulo –</text>
+    </svg>
+  </div>
+
+  <div class="stack">
+    <div class="tiles">
+      <div class="tile"><div class="label">Estado</div><div class="value" id="v-est">–</div></div>
+      <div class="tile"><div class="label">Comandada</div><div class="value" id="v-cmd">–</div></div>
+      <div class="tile"><div class="label">Detectada</div><div class="value" id="v-det">–</div></div>
+      <div class="tile"><div class="label">Sinal</div><div class="value" id="v-sig">–</div></div>
+      <div class="tile"><div class="label">Falha</div><div class="value" id="v-falha">–</div></div>
+      <div class="tile"><div class="label">Tempo da placa</div><div class="value"><span id="v-t">–</span><span class="unit">s</span></div></div>
+    </div>
+    <div class="card">
+      <h2>Comandos</h2>
+      <p>Cada botão manda uma linha pela serial. A placa responde com <code>ok …</code> e com os eventos no log.</p>
+      <div class="controls">
+        <div class="group"><span class="label">Manobra</span>
+          <div class="row">
+            <button data-cmd="n" id="b-n">Normal</button>
+            <button data-cmd="r" id="b-r">Reversa</button>
+            <button data-cmd="t">Alternar</button>
+          </div>
+        </div>
+        <div class="group"><span class="label">Segurança</span>
+          <div class="row">
+            <button data-cmd="emg" class="danger">Emergência</button>
+            <button data-cmd="rearme">Rearme</button>
+          </div>
+        </div>
+        <div class="group"><span class="label">Simular via</span>
+          <div class="row">
+            <button id="b-occ">Trem no AMV</button>
+            <button id="b-obs">Obstruir agulha</button>
+          </div>
+        </div>
+        <div class="group"><span class="label">Comando livre (<code>help</code> lista)</span>
+          <div class="row">
+            <input type="text" id="cmd" placeholder="ex.: stats" autocomplete="off">
+            <button id="b-cmd">Enviar</button>
+          </div>
+        </div>
+      </div>
+      <div id="cmd-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>Tempo medido × tempo calculado</h2>
+    <p>Medido na placa com o TIM14 (1 µs) e o tick do FreeRTOS (1 ms). A meta vem de docs/ARQUITETURA.md.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Caminho</th><th>Último</th><th>Máximo</th><th>Meta</th><th></th></tr></thead>
+      <tbody id="tm-body"></tbody>
+    </table>
+    </div>
+    <p class="muted" id="tm-counts" style="margin-top:8px">–</p>
+    <p class="muted" id="stk">Pilha livre por tarefa: envie <code>stats</code>.</p>
+  </div>
+  <div class="card">
+    <h2>Eventos</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Ângulo da máquina de chave</h2>
+  <p>A cor da linha mostra o aspecto do sinal naquele instante. Ele só fica verde ou amarelo com o AMV travado.</p>
+  <div class="plot"><canvas id="c-ang"></canvas></div>
+</div>
+
+<script>
+(function () {
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const $ = (id) => document.getElementById(id);
+  const WINDOW = 480;                                   // ~2 min a 250 ms
+  const ANG_N = 4500, ANG_R = 13500;
+  const POS = { N: "Normal", R: "Reversa", "-": "nenhuma", NR: "N e R!" };
+  const SIG_COLOR = () => ({ vermelho: css("--sig-red"), amarelo: css("--sig-yellow"), verde: css("--sig-green") });
+
+  // meta em us (latencias) ou ms (manobra)
+  const METRICS = [
+    { key: "lat_emg",   name: "Emergência → sinal vermelho",   unit: "µs", meta: 10000 },
+    { key: "lat_perda", name: "Perda de detecção → vermelho",  unit: "µs", meta: 10000 },
+    { key: "lat_cmd",   name: "Pedido → motor comandado",      unit: "µs", meta: 50000 },
+    { key: "manobra",   name: "Manobra (motor → travado)",     unit: "ms", meta: 4500, nominal: 3000 },
+    { key: "jit",       name: "Jitter do período do motor",    unit: "µs", meta: 1000, single: true },
+  ];
+
+  let occ = 0, obs = 0;
+
+  // ---------- grafico ----------
+  let chart = null;
+  if (typeof Chart === "undefined") $("nolib").style.display = "block";
+  else {
+    Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+    Chart.defaults.color = css("--text-secondary");
+    Chart.defaults.animation = false;
+    chart = new Chart($("c-ang"), {
+      type: "line",
+      data: { datasets: [{ data: [], borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+        segment: { borderColor: (c) => SIG_COLOR()[c.p1.raw.sig] || css("--rail") } }] },
+      options: {
+        maintainAspectRatio: false, parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: {
+            title: (it) => `placa: ${(it[0].raw.t / 1000).toFixed(2)} s`,
+            label: (it) => `${it.parsed.y.toFixed(1)}° · ${it.raw.est} · sinal ${it.raw.sig}` } } },
+        scales: {
+          x: { type: "linear", title: { display: true, text: "tempo da placa (s)" },
+               grid: { color: css("--grid") }, ticks: { maxTicksLimit: 8 } },
+          y: { min: 30, max: 150, title: { display: true, text: "graus" }, grid: { color: css("--grid") },
+               afterBuildTicks: (s) => { s.ticks = [45, 90, 135].map((v) => ({ value: v })); },
+               ticks: { callback: (v) => v === 45 ? "45° N" : v === 135 ? "135° R" : v + "°" } },
+        },
+      },
+    });
+  }
+  let pending = false;
+  function redraw() {
+    if (!chart || pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; chart.update(); });
+  }
+
+  // ---------- patio ----------
+  function drawYard(s) {
+    const frac = Math.min(1, Math.max(0, (s.ang - ANG_N) / (ANG_R - ANG_N)));
+    $("blade").setAttribute("y2", String(130 - frac * 18));
+    $("ang-label").textContent = `ângulo ${(s.ang / 100).toFixed(1)}°`;
+    const col = SIG_COLOR();
+    const locked = s.est === "travado";
+    $("r-normal").classList.toggle("on", locked && s.cmd === "N");
+    $("r-reversa").classList.toggle("on", locked && s.cmd === "R");
+    $("r-normal").style.stroke = locked && s.cmd === "N" ? col[s.sig] : "";
+    $("r-reversa").style.stroke = locked && s.cmd === "R" ? col[s.sig] : "";
+    $("lamp-r").setAttribute("fill", s.sig === "vermelho" ? col.vermelho : css("--lamp-off"));
+    $("lamp-y").setAttribute("fill", s.sig === "amarelo" ? col.amarelo : css("--lamp-off"));
+    $("lamp-g").setAttribute("fill", s.sig === "verde" ? col.verde : css("--lamp-off"));
+    $("det-n").setAttribute("fill", s.det === "N" || s.det === "NR" ? css("--accent") : css("--lamp-off"));
+    $("det-r").setAttribute("fill", s.det === "R" || s.det === "NR" ? css("--accent") : css("--lamp-off"));
+    const vis = (on) => (on ? "visible" : "hidden");
+    $("occ-zone").setAttribute("visibility", vis(s.occ));
+    $("occ-label").setAttribute("visibility", vis(s.occ));
+    $("obs-mark").setAttribute("visibility", vis(s.obs));
+    $("obs-mark").setAttribute("y", String(130 - frac * 18 - 6));
+  }
+
+  function pushSt(s) {
+    if (chart) {
+      const d = chart.data.datasets[0].data;
+      d.push({ x: s.t / 1000, y: s.ang / 100, sig: s.sig, est: s.est, t: s.t });
+      if (d.length > WINDOW) d.splice(0, d.length - WINDOW);
+    }
+    drawYard(s);
+    $("v-est").textContent = s.est;
+    $("v-est").className = "value est-" + s.est;
+    $("v-cmd").textContent = POS[s.cmd] || s.cmd;
+    $("v-det").textContent = POS[s.det] || s.det;
+    $("v-sig").textContent = s.sig;
+    $("v-sig").style.color = SIG_COLOR()[s.sig] || "";
+    $("v-falha").textContent = s.falha;
+    $("v-falha").className = "value" + (s.falha !== "nenhuma" ? " est-falha" : "");
+    $("v-t").textContent = (s.t / 1000).toFixed(1);
+    $("b-n").classList.toggle("active", s.cmd === "N");
+    $("b-r").classList.toggle("active", s.cmd === "R");
+    occ = s.occ; obs = s.obs;
+    $("b-occ").classList.toggle("active", !!occ);
+    $("b-obs").classList.toggle("active", !!obs);
+  }
+
+  // ---------- tempos ----------
+  function showTm(tm) {
+    const fmt = (v) => (v === undefined ? "–" : v.toLocaleString("pt-BR"));
+    $("tm-body").innerHTML = METRICS.map((m) => {
+      const v = tm[m.key];
+      const lastV = Array.isArray(v) ? v[0] : undefined;
+      const maxV = Array.isArray(v) ? v[1] : v;
+      const has = maxV !== undefined && maxV > 0;
+      const ok = !has || maxV <= m.meta;
+      const meta = `≤ ${fmt(m.meta)} ${m.unit}` + (m.nominal ? ` (nominal ${fmt(m.nominal)})` : "");
+      return `<tr><td>${m.name}</td><td>${m.single ? "" : has ? fmt(lastV) + " " + m.unit : "–"}</td>` +
+             `<td>${has ? fmt(maxV) + " " + m.unit : "–"}</td><td>${meta}</td>` +
+             `<td class="${has ? (ok ? "pass" : "fail") : ""}">${has ? (ok ? "✓ dentro" : "✕ estourou") : ""}</td></tr>`;
+    }).join("");
+    $("tm-counts").textContent = `manobras: ${tm.n ?? 0} · falhas: ${tm.falhas ?? 0} · pedidos rejeitados: ${tm.rej ?? 0}`;
+  }
+  showTm({});
+
+  function showStk(stk) {
+    const parts = Object.entries(stk).filter(([k]) => k.startsWith("t") && k !== "type" && k !== "text")
+      .map(([k, v]) => `${k} ${v}`);
+    $("stk").textContent = "Pilha livre (palavras de 4 B): " + parts.join(" · ");
+  }
+
+  // ---------- log ----------
+  function addLog(ev) {
+    const line = document.createElement("div");
+    line.textContent = ev.text;
+    if (ev.type === "ev") {
+      line.className = ["falha", "emergencia", "rejeitado"].includes(ev.name) ? "ev bad" : "ev";
+    }
+    const log = $("log");
+    log.appendChild(line);
+    while (log.childNodes.length > 200) log.removeChild(log.firstChild);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // ---------- comandos ----------
+  async function send(cmd) {
+    $("cmd-msg").textContent = "";
+    try {
+      const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ cmd }) });
+      if (!r.ok) $("cmd-msg").textContent = (await r.json()).error || `erro ${r.status}`;
+    } catch (e) { $("cmd-msg").textContent = "o servidor Python não respondeu"; }
+  }
+  document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => send(b.dataset.cmd)));
+  $("b-occ").addEventListener("click", () => send(`occ ${occ ? 0 : 1}`));
+  $("b-obs").addEventListener("click", () => send(`obs ${obs ? 0 : 1}`));
+  const sendFree = () => { const c = $("cmd").value.trim(); if (c) { send(c); $("cmd").value = ""; } };
+  $("b-cmd").addEventListener("click", sendFree);
+  $("cmd").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFree(); });
+
+  // ---------- eventos do servidor ----------
+  const es = new EventSource("/events");
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === "st") { pushSt(ev); redraw(); }
+    else if (ev.type === "tm") showTm(ev);
+    else if (ev.type === "stk") showStk(ev);
+    else if (ev.type === "ev" || ev.type === "log") addLog(ev);
+    else if (ev.type === "history") {
+      ev.samples.forEach(pushSt); ev.logs.forEach(addLog);
+      if (ev.last.tm) showTm(ev.last.tm);
+      if (ev.last.stk) showStk(ev.last.stk);
+      redraw();
+    } else if (ev.type === "status") {
+      $("status").className = ev.connected ? "on" : "";
+      document.querySelectorAll("button").forEach((b) => (b.disabled = !ev.connected));
+      $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
+                                             : "sem conexão com o Wokwi (inicie o simulador)";
+    }
+  };
+  es.onerror = () => { $("status").className = ""; $("status").textContent = "o servidor Python parou"; };
+})();
+</script>
+</body>
+</html>

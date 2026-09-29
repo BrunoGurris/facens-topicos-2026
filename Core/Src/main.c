@@ -22,9 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "amv.h"
 
 /* USER CODE END Includes */
 
@@ -35,12 +33,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
-#define BLINK_PERIOD_DEFAULT_MS 500
-#define BLINK_PERIOD_MIN_MS     20
-#define BLINK_PERIOD_MAX_MS     10000
-#define STATUS_HEARTBEAT_MS     1000   /* status periodico quando nao esta' piscando */
-#define CMD_BUF_SIZE            32
 
 /* USER CODE END PD */
 
@@ -57,15 +49,6 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-static uint8_t  blink_enabled   = 1;
-static uint32_t blink_period_ms = BLINK_PERIOD_DEFAULT_MS;
-static uint32_t last_toggle_ms  = 0;
-static uint32_t last_status_ms  = 0;
-
-/* Linha de comando recebida pela USART2 (ver uart_poll_commands). */
-static char    cmd_buf[CMD_BUF_SIZE];
-static uint8_t cmd_len = 0;
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,117 +62,6 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-/* Envia uma string pela USART2 (monitor serial do Wokwi). */
-static void uart_print(const char *msg)
-{
-  HAL_UART_Transmit(&huart2, (const uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-}
-
-/* Envia o timer da placa (SysTick, ms desde o boot) e o estado atual.
- * Formato fixo "tick=<ms> led=<0|1> blink=<0|1> period=<ms>" -- e' o que
- * tools/plot_timer.py parseia. */
-static void uart_print_status(void)
-{
-  char buf[64];
-  last_status_ms = HAL_GetTick();
-  snprintf(buf, sizeof(buf), "tick=%lu led=%d blink=%d period=%lu\r\n",
-           (unsigned long)last_status_ms,
-           HAL_GPIO_ReadPin(Led_GPIO_Port, Led_Pin) == GPIO_PIN_SET,
-           blink_enabled,
-           (unsigned long)blink_period_ms);
-  uart_print(buf);
-}
-
-/* Executa uma linha de comando vinda da serial (pagina web ou monitor serial).
- * Comandos: led on|off|toggle, blink on|off, period <ms>, status, help. */
-static void handle_command(char *cmd)
-{
-  char reply[64];
-
-  if (strcmp(cmd, "led on") == 0)
-    HAL_GPIO_WritePin(Led_GPIO_Port, Led_Pin, GPIO_PIN_SET);
-  else if (strcmp(cmd, "led off") == 0)
-    HAL_GPIO_WritePin(Led_GPIO_Port, Led_Pin, GPIO_PIN_RESET);
-  else if (strcmp(cmd, "led toggle") == 0)
-    HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
-  else if (strcmp(cmd, "blink on") == 0)
-    blink_enabled = 1;
-  else if (strcmp(cmd, "blink off") == 0)
-    blink_enabled = 0;
-  else if (strncmp(cmd, "period ", 7) == 0)
-  {
-    long ms = atol(cmd + 7);
-    if (ms < BLINK_PERIOD_MIN_MS || ms > BLINK_PERIOD_MAX_MS)
-    {
-      snprintf(reply, sizeof(reply), "err period fora de %d..%d ms\r\n",
-               BLINK_PERIOD_MIN_MS, BLINK_PERIOD_MAX_MS);
-      uart_print(reply);
-      return;
-    }
-    blink_period_ms = (uint32_t)ms;
-  }
-  else if (strcmp(cmd, "status") == 0)
-  {
-    /* so' responde com a linha de status abaixo */
-  }
-  else if (strcmp(cmd, "help") == 0)
-  {
-    uart_print("comandos: led on|off|toggle, blink on|off, period <ms>, status, help\r\n");
-    return;
-  }
-  else
-  {
-    snprintf(reply, sizeof(reply), "err comando desconhecido: %s\r\n", cmd);
-    uart_print(reply);
-    return;
-  }
-
-  snprintf(reply, sizeof(reply), "ok %s\r\n", cmd);
-  uart_print(reply);
-  uart_print_status();
-}
-
-/* Le a USART2 sem bloquear (polling do RXNE), monta uma linha e executa no '\n'. */
-static void uart_poll_commands(void)
-{
-  if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_ORE))
-    __HAL_UART_CLEAR_OREFLAG(&huart2);
-
-  while (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_RXNE))
-  {
-    char c = (char)(huart2.Instance->RDR & 0xFF);
-
-    if (c == '\n' || c == '\r')
-    {
-      if (cmd_len > 0)
-      {
-        cmd_buf[cmd_len] = '\0';
-        handle_command(cmd_buf);
-        cmd_len = 0;
-      }
-    }
-    else if (cmd_len < CMD_BUF_SIZE - 1)
-    {
-      cmd_buf[cmd_len++] = c;
-    }
-    else
-    {
-      cmd_len = 0;   /* linha grande demais: descarta */
-      uart_print("err comando muito longo\r\n");
-    }
-  }
-}
-
-/* Chamado pelo HAL quando ocorre a interrupcao EXTI do botao (PC13). */
-void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
-{
-  if (GPIO_Pin == User_Button_Pin)
-  {
-    HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
-    uart_print("Botao pressionado!\r\n");
-  }
-}
 
 /* USER CODE END 0 */
 
@@ -225,9 +97,10 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  uart_print("Blink iniciado. Pressione o botao para inverter o LED.\r\n");
-  uart_print("Envie 'help' pela serial para ver os comandos.\r\n");
-  uart_print_status();
+  /* Timers (servo + cronometro de 1 us), NVIC e UART em modo interrupcao.
+   * Depois disso quem manda e' o FreeRTOS: amv_start() nao retorna. */
+  amv_hw_init();
+  amv_start();
 
   /* USER CODE END 2 */
 
@@ -238,22 +111,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    uart_poll_commands();
-
-    uint32_t now = HAL_GetTick();
-    if (blink_enabled)
-    {
-      if (now - last_toggle_ms >= blink_period_ms)
-      {
-        last_toggle_ms = now;
-        HAL_GPIO_TogglePin(Led_GPIO_Port, Led_Pin);
-        uart_print_status();
-      }
-    }
-    else if (now - last_status_ms >= STATUS_HEARTBEAT_MS)
-    {
-      uart_print_status();
-    }
+    /* nunca chega aqui: o escalonador do FreeRTOS assumiu a CPU */
   }
   /* USER CODE END 3 */
 }
@@ -396,23 +254,64 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Led_GPIO_Port, Led_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, Heartbeat_Pin|Sinal_Amarelo_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Sinal_Verde_Pin|Planta_DetN_Pin|Planta_DetR_Pin, GPIO_PIN_RESET);
+  /* sinal nasce VERMELHO: estado seguro desde o primeiro instante */
+  HAL_GPIO_WritePin(Sinal_Vermelho_GPIO_Port, Sinal_Vermelho_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pin : User_Button_Pin */
-  GPIO_InitStruct.Pin = User_Button_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(User_Button_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : Led_Pin */
-  GPIO_InitStruct.Pin = Led_Pin;
+  /*Configure GPIO pins : Heartbeat_Pin Sinal_Amarelo_Pin */
+  GPIO_InitStruct.Pin = Heartbeat_Pin|Sinal_Amarelo_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(Led_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
+  /*Configure GPIO pins : Sinal_Vermelho_Pin Sinal_Verde_Pin Planta_DetN_Pin Planta_DetR_Pin */
+  GPIO_InitStruct.Pin = Sinal_Vermelho_Pin|Sinal_Verde_Pin|Planta_DetN_Pin|Planta_DetR_Pin;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Det_Normal_Pin Det_Reversa_Pin (as duas bordas) */
+  GPIO_InitStruct.Pin = Det_Normal_Pin|Det_Reversa_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Btn_Comando_Pin */
+  GPIO_InitStruct.Pin = Btn_Comando_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(Btn_Comando_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Btn_Emergencia_Pin */
+  GPIO_InitStruct.Pin = Btn_Emergencia_Pin;
+  HAL_GPIO_Init(Btn_Emergencia_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Ocupacao_Pin */
+  GPIO_InitStruct.Pin = Ocupacao_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(Ocupacao_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Obstrucao_Pin Btn_Rearme_Pin */
+  GPIO_InitStruct.Pin = Obstrucao_Pin|Btn_Rearme_Pin;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : Servo_Pin (TIM3_CH1) */
+  GPIO_InitStruct.Pin = Servo_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF1_TIM3;
+  HAL_GPIO_Init(Servo_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init
+   * Prioridade de NVIC 1 (0 = mais alta no M0+). O port do FreeRTOS pro M0
+   * mascara todas as IRQs na secao critica, entao qualquer prioridade pode
+   * chamar as funcoes ...FromISR. */
+  HAL_NVIC_SetPriority(EXTI0_1_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -431,6 +330,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  amv_hw_estado_seguro();
   __disable_irq();
   while (1)
   {

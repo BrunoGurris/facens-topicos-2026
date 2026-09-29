@@ -4,18 +4,61 @@
   "editor": "wokwi",
   "parts": [
     { "type": "board-st-nucleo-c031c6", "id": "nucleo", "top": -37.71, "left": -264.45, "attrs": {} },
-    { "type": "wokwi-led", "id": "led1", "top": 100, "left": 150, "attrs": { "color": "red" } },
-    { "type": "wokwi-resistor", "id": "r1", "top": 180, "left": 130, "attrs": { "value": "220" } },
-    { "type": "wokwi-pushbutton", "id": "btn1", "top": 0, "left": 150, "attrs": { "color": "blue" } }
+
+    { "type": "wokwi-text", "id": "t_maq", "top": -172.8, "left": 124.8, "attrs": { "text": "Maquina de chave (PA6)" } },
+    { "type": "wokwi-servo", "id": "servo1", "top": -144, "left": 124.8, "attrs": { "horn": "single", "hornColor": "#444" } },
+
+    { "type": "wokwi-text", "id": "t_sinal", "top": -172.8, "left": 355.2, "attrs": { "text": "Sinal" } },
+    { "type": "wokwi-led", "id": "sig_r", "top": -144, "left": 355.2, "attrs": { "color": "red", "label": "Pare" } },
+    { "type": "wokwi-led", "id": "sig_y", "top": -96, "left": 355.2, "attrs": { "color": "yellow", "label": "Desviada" } },
+    { "type": "wokwi-led", "id": "sig_g", "top": -48, "left": 355.2, "attrs": { "color": "limegreen", "label": "Via livre" } },
+
+    { "type": "wokwi-text", "id": "t_det", "top": 38.4, "left": 124.8, "attrs": { "text": "Detectores (simulados: PB4->PA0, PB5->PA1)" } },
+    { "type": "wokwi-led", "id": "det_n", "top": 67.2, "left": 134.4, "attrs": { "color": "blue", "label": "Det N" } },
+    { "type": "wokwi-led", "id": "det_r", "top": 67.2, "left": 192, "attrs": { "color": "white", "label": "Det R" } },
+
+    { "type": "wokwi-text", "id": "t_via", "top": 153.6, "left": 124.8, "attrs": { "text": "Ocupacao (PA4)   Obstrucao (PB1)" } },
+    { "type": "wokwi-slide-switch", "id": "sw_occ", "top": 182.4, "left": 134.4, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "sw_obs", "top": 182.4, "left": 259.2, "attrs": {} },
+
+    { "type": "wokwi-text", "id": "t_btn", "top": 259.2, "left": 124.8, "attrs": { "text": "Comando (PA10)  Rearme (PB3)  Emergencia (PC13)" } },
+    { "type": "wokwi-pushbutton", "id": "btn_cmd", "top": 288, "left": 124.8, "attrs": { "color": "green", "label": "N/R" } },
+    { "type": "wokwi-pushbutton", "id": "btn_rearme", "top": 288, "left": 230.4, "attrs": { "color": "yellow", "label": "Rearme" } },
+    { "type": "wokwi-pushbutton", "id": "btn_emg", "top": 288, "left": 336, "attrs": { "color": "red", "label": "Emergencia" } }
   ],
   "connections": [
     [ "$serialMonitor:TX", "nucleo:PA3", "", [] ],
     [ "$serialMonitor:RX", "nucleo:PA2", "", [] ],
-    [ "nucleo:PA5", "led1:A", "red", [] ],
-    [ "led1:C", "r1:1", "black", [] ],
-    [ "r1:2", "nucleo:GND.2", "black", [] ],
-    [ "btn1:1.l", "nucleo:PC13", "green", [] ],
-    [ "btn1:2.l", "nucleo:GND.1", "black", [] ]
+
+    [ "servo1:PWM", "nucleo:PA6", "orange", [] ],
+    [ "servo1:V+", "nucleo:5V.1", "red", [] ],
+    [ "servo1:GND", "nucleo:GND.1", "black", [] ],
+
+    [ "sig_r:A", "nucleo:PB0.2", "red", [] ],
+    [ "sig_r:C", "nucleo:GND.2", "black", [] ],
+    [ "sig_y:A", "nucleo:PA7", "gold", [] ],
+    [ "sig_y:C", "nucleo:GND.2", "black", [] ],
+    [ "sig_g:A", "nucleo:PB6", "green", [] ],
+    [ "sig_g:C", "nucleo:GND.2", "black", [] ],
+
+    [ "nucleo:PB4", "nucleo:PA0", "blue", [] ],
+    [ "nucleo:PB5", "nucleo:PA1", "violet", [] ],
+    [ "det_n:A", "nucleo:PB4", "blue", [] ],
+    [ "det_n:C", "nucleo:GND.3", "black", [] ],
+    [ "det_r:A", "nucleo:PB5", "violet", [] ],
+    [ "det_r:C", "nucleo:GND.3", "black", [] ],
+
+    [ "sw_occ:2", "nucleo:PA4", "cyan", [] ],
+    [ "sw_occ:3", "nucleo:GND.4", "black", [] ],
+    [ "sw_obs:2", "nucleo:PB1", "magenta", [] ],
+    [ "sw_obs:3", "nucleo:GND.4", "black", [] ],
+
+    [ "btn_cmd:1.l", "nucleo:PA10", "green", [] ],
+    [ "btn_cmd:2.l", "nucleo:GND.5", "black", [] ],
+    [ "btn_rearme:1.l", "nucleo:PB3", "gold", [] ],
+    [ "btn_rearme:2.l", "nucleo:GND.5", "black", [] ],
+    [ "btn_emg:1.l", "nucleo:PC13", "red", [] ],
+    [ "btn_emg:2.l", "nucleo:GND.6", "black", [] ]
   ],
   "dependencies": {}
 }
