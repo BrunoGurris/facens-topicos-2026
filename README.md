@@ -186,7 +186,11 @@ st t=1750 est=travado cmd=N det=N sig=verde ang=4500 occ=0 obs=0 falha=nenhuma
 | `help` | lista os comandos |
 
 A placa responde `ok <comando>` ou `err <motivo>`. Depois vêm os eventos
-(`ev ... pedido`, `travado`, `rejeitado`, `falha`, `emergencia`, `rearme`).
+(`ev ... pedido`, `pendente`, `travado`, `rejeitado`, `falha`, `emergencia`, `rearme`).
+
+Com o trem no circuito de via (ou o AMV em movimento), o pedido **fica em
+espera** e é executado sozinho quando a via libera. O painel mostra o botão com
+borda tracejada e a mensagem "Pedido para … em espera".
 
 **Sempre que alterar o código, rode `make` de novo antes de reiniciar o simulador.**
 
@@ -197,8 +201,11 @@ A placa responde `ok <comando>` ou `err <motivo>`. Depois vêm os eventos
 O script `tools/painel_amv.py` conecta na serial da placa simulada e abre uma
 página no navegador com:
 
-- o **circuito animado**: linha principal oval, ramal da rota Reversa, agulha na posição real do servo,
-  sinal aceso, detectores, o trem andando e o trecho do circuito de via (vermelho quando ocupado);
+- o **circuito animado**: linha principal oval, ramal da rota Reversa, sinal aceso, o trem andando e o
+  trecho do circuito de via (vermelho quando ocupado);
+- o **detalhe da agulha** (vista de cima, no centro do oval): trilhos de encosto, as duas agulhas
+  móveis seguindo o ângulo real do servo, tirante, máquina de chave, detectores N/R, estado
+  (TRAVADO / MOVENDO / FALHA / EMERGÊNCIA) e o pedido em espera;
 - o campo de **velocidade do trem** (0 a 80 km/h), o botão Parar e o "Recolocar trem";
 - os botões **Normal / Reversa / Alternar / Emergência / Rearme / Reiniciar tudo** e os de simular trem e obstrução.
   "Reiniciar tudo" reseta a placa e o painel limpa o gráfico, o log e a tabela de tempos;
@@ -238,7 +245,39 @@ O Chart.js está incluído em `tools/chart.umd.min.js`, então tudo funciona off
 
 ---
 
-## 6. Depurar (opcional)
+## 6. Testes automáticos no PC
+
+```bash
+make test          # ou: tests/run.sh [cenario ...]
+```
+
+Compila as tarefas **reais** do AMV (`amv_tasks.c`, `amv_trem.c`, `amv_comm.c`,
+sem alterar nada) com o **kernel FreeRTOS de verdade**, usando o port POSIX
+(cada tarefa vira uma thread do Linux). O hardware é substituído por
+`tests/host/hw_host.c`: os contatos da planta chegam nos "pinos" dos detectores
+como no fio do `diagram.json`, e cada borda vira o mesmo evento que a ISR gera.
+Cada cenário de `tests/cenarios.c` manda comandos pela "serial", como o painel
+faria. O `run.sh` confere as linhas que a placa responde. Leva ~1,5 min, com
+todos os cenários rodando em paralelo e em tempo real.
+
+| Cenário | O que exercita |
+|---|---|
+| `manobras` | manobras alternadas com o trem circulando a 40 km/h |
+| `trem80` | trem a 80 km/h (circuito ocupado ~2/3 do tempo): pedidos saem da fila |
+| `cliques` | vários pedidos em cima de uma manobra, Alternar, cancelamento da espera |
+| `emergencia` | emergência no meio da manobra, rearme, manobras depois |
+| `fila` | circuito ocupado guarda o pedido; liberou, executa sozinho |
+| `obstrucao` | perda de detecção, rearme com obstrução (timeout), rearme sem obstrução |
+| `fio_quebrado` | controle: fio PB5→PA1 rompido tem que dar timeout com `planta=R pinos=-` |
+
+Logs completos em `tests/out/<cenario>.log` (com `HIL_VERBOSE=1` incluem também
+as linhas periódicas `st`/`tr`). Os tempos são do PC, não da placa, então
+servem para validar a lógica. Os números do relatório vêm do Wokwi.
+Só roda em Linux/macOS (pthreads) e precisa do `gcc` nativo (`sudo apt install build-essential`).
+
+---
+
+## 7. Depurar (opcional)
 
 1. F1 → `Wokwi: Start Simulator and Wait for Debugger`
 2. Vá em *Run and Debug* (Ctrl+Shift+D), escolha **Wokwi Debug (Linux)** ou
@@ -249,7 +288,7 @@ O Wokwi expõe um servidor GDB na porta 3333 (configurado em `wokwi.toml`).
 
 ---
 
-## 7. Estrutura do projeto
+## 8. Estrutura do projeto
 
 ```
 blink/
@@ -265,9 +304,10 @@ blink/
 │       ├── amv_trem.c        # tTrem: SIMULAÇÃO do trem (frenagem, ocupação)
 │       ├── amv_hw.c          # servo (TIM3), cronômetro 1 µs (TIM14), ISRs → filas
 │       └── stm32c0xx_it.c    # vetores de interrupção (EXTI, USART2)
-├── Middlewares/Third_Party/FreeRTOS/   # kernel FreeRTOS V11.1.0 (MIT), port ARM_CM0
+├── Middlewares/Third_Party/FreeRTOS/   # kernel FreeRTOS V11.1.0 (MIT), ports ARM_CM0 e POSIX (testes)
 ├── Drivers/                  # HAL da ST + CMSIS (não mexer)
 ├── docs/ARQUITETURA.md       # processo, tarefas, fluxogramas, cálculos de tempo
+├── tests/                    # testes no PC: cenarios.c, host/ (HW falso), run.sh
 ├── build.sh                  # compila e abre o painel web (./build.sh)
 ├── tools/
 │   ├── painel_amv.py         # ponte serial ↔ navegador
@@ -295,7 +335,7 @@ Lista de componentes: https://docs.wokwi.com/parts/
 
 ---
 
-## 8. Criando um novo projeto a partir deste
+## 9. Criando um novo projeto a partir deste
 
 ```bash
 cp -r blink meu-projeto
@@ -323,6 +363,7 @@ No Windows (Git Bash) os mesmos comandos funcionam.
 | `No module named 'serial'` | Instale o pyserial (seção 5) |
 | Botões do painel desabilitados | Sem conexão com a serial; ao conectar eles habilitam sozinhos |
 | Pede licença de novo | F1 → `Wokwi: Request a new License` |
+| `falha tipo=timeout` ao manobrar | leia os campos do evento: `ang` diferente de 4500/13500 → o motor não chegou; `obs=1` → obstrução ligada (chave "Obstrução" do Wokwi ou botão do painel); `planta=R pinos=-` → o contato foi gerado mas não chegou em PA0/PA1: confira os fios PB4→PA0 e PB5→PA1 no `diagram.json` |
 | Sinal nunca sai do vermelho | a chave "Obstrução" está ligada, ou houve falha/emergência: tire a obstrução e mande `rearme` |
-| Todo pedido volta `rejeitado motivo=ocupado` | a chave "Ocupação" está ligada (ou `occ 1`); desligue |
-| LEDs congelados e LD4 parou de piscar | `configASSERT` ou estouro de pilha: o firmware entra no estado seguro e para. Use o GDB (seção 6) |
+| Pedido fica eternamente "em espera" | a chave "Ocupação" do Wokwi está ligada, ou o botão "Ocupar via" do painel (`occ 1`); desligue |
+| LEDs congelados e LD4 parou de piscar | `configASSERT` ou estouro de pilha: o firmware entra no estado seguro e para. Use o GDB (seção 7) |

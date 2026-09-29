@@ -43,6 +43,7 @@ amv_status_t      g_amv = {
 };
 amv_stats_t       g_stats;
 volatile uint16_t g_angulo_cdeg = ANG_INICIAL_CDEG;
+volatile uint8_t  g_planta_saida = POS_NENHUMA;
 
 /* Macro para criar uma fila estatica: buffer + estrutura de controle. */
 #define FILA_ESTATICA(nome, len, tipo)                                   \
@@ -56,14 +57,19 @@ FILA_ESTATICA(q_log,   Q_LOG_LEN,   log_msg_t);
 FILA_ESTATICA(q_rx,    Q_RX_LEN,    uint8_t);
 static StaticSemaphore_t mtx_amv_ctl, sem_tx_ctl;
 
-/* Pilhas em palavras de 32 bits */
-#define STK_SEG     128
-#define STK_MOTOR   112
-#define STK_INTER   128
-#define STK_SINAL   96
-#define STK_PLANTA  96
-#define STK_TREM    128
-#define STK_COMM    256
+/* Pilhas em palavras de 32 bits. Os testes no PC (tests/) compilam com
+ * STK_ESCALA maior: la' cada tarefa e' uma thread POSIX, que exige pilha
+ * grande. Na placa vale 1. */
+#ifndef STK_ESCALA
+#define STK_ESCALA  1
+#endif
+#define STK_SEG     (128 * STK_ESCALA)
+#define STK_MOTOR   (112 * STK_ESCALA)
+#define STK_INTER   (128 * STK_ESCALA)
+#define STK_SINAL   (96 * STK_ESCALA)
+#define STK_PLANTA  (96 * STK_ESCALA)
+#define STK_TREM    (128 * STK_ESCALA)
+#define STK_COMM    (256 * STK_ESCALA)
 
 typedef struct {
   TaskFunction_t fn;
@@ -318,11 +324,55 @@ static void inicia_manobra(amv_pos_t alvo, TickType_t *inicio)
   xQueueSend(g_q_motor, &mv, 0);
 }
 
+/* Pedido em espera (route stacking): se o pedido chega com o circuito de
+ * via ocupado ou com o AMV em movimento, ele nao e' descartado -- fica
+ * guardado e e' executado assim que as condicoes permitirem. Chamar com
+ * g_mtx_amv. */
+static void tenta_pendente(TickType_t *inicio, TickType_t desde)
+{
+  amv_pos_t alvo = g_amv.pendente;
+  if (alvo == POS_NENHUMA) return;
+
+  if (g_amv.estado == EST_FALHA || g_amv.estado == EST_EMERGENCIA)
+  {
+    g_amv.pendente = POS_NENHUMA;              /* falha cancela o pedido */
+    amv_log(LOG_PENDENTE, alvo, REJ_BLOQUEADO, 0);
+  }
+  else if (g_amv.estado == EST_TRAVADO && !amv_hw_ocupado())
+  {
+    g_amv.pendente = POS_NENHUMA;
+    if (alvo != g_amv.comandada)
+    {
+      inicia_manobra(alvo, inicio);
+      amv_log(LOG_PEDIDO, alvo, ORIG_FILA, xTaskGetTickCount() - desde);
+    }
+  }
+}
+
+/* AMV confirmado na posicao comandada: trava e libera o sinal. Chamar com
+ * g_mtx_amv; devolve o mutex. 'por_nivel' = confirmado pela leitura
+ * periodica e nao pela interrupcao do detector. */
+static void trava(TickType_t inicio, uint8_t por_nivel)
+{
+  uint32_t dur = xTaskGetTickCount() - inicio;
+  g_amv.estado = EST_TRAVADO;
+  g_amv.sinal  = aspecto(&g_amv);   /* tSinal vai acender no proximo ciclo */
+  amv_pos_t pos = g_amv.comandada;
+  xSemaphoreGive(g_mtx_amv);
+
+  taskENTER_CRITICAL();
+  g_stats.manobra_ms = dur;
+  if (dur > g_stats.manobra_max_ms) g_stats.manobra_max_ms = dur;
+  g_stats.manobras++;
+  taskEXIT_CRITICAL();
+  amv_log(LOG_TRAVADO, pos, por_nivel, dur);
+}
+
 static void tarefa_intertravamento(void *arg)
 {
   (void)arg;
   cmd_t      c;
-  TickType_t inicio;
+  TickType_t inicio, pend_desde = 0;
 
   /* Boot: posicao desconhecida -> leva o AMV para NORMAL e verifica. */
   xSemaphoreTake(g_mtx_amv, portMAX_DELAY);
@@ -331,27 +381,53 @@ static void tarefa_intertravamento(void *arg)
 
   for (;;)
   {
-    /* Watchdog de manobra: enquanto MOVENDO, espera no maximo o que falta
-     * do prazo T_WATCHDOG_MS; fora disso, espera indefinidamente. */
+    /* Pedido em espera: reavaliado a cada volta do laco (logo depois de
+     * travar, por exemplo, ja' sai a proxima manobra).
+     * Watchdog de manobra: enquanto MOVENDO, espera no maximo o que falta
+     * do prazo T_WATCHDOG_MS; com pedido em espera, acorda a cada
+     * T_PENDENTE_POLL_MS para ver se o circuito liberou. */
     TickType_t espera = portMAX_DELAY;
     xSemaphoreTake(g_mtx_amv, portMAX_DELAY);
+    if (g_amv.estado != EST_MOVENDO)
+      tenta_pendente(&inicio, pend_desde);
     if (g_amv.estado == EST_MOVENDO)
     {
       TickType_t passado = xTaskGetTickCount() - inicio;
       TickType_t limite  = pdMS_TO_TICKS(T_WATCHDOG_MS);
       espera = passado >= limite ? 0 : limite - passado;
+      if (espera > pdMS_TO_TICKS(T_CONFIRMA_POLL_MS))
+        espera = pdMS_TO_TICKS(T_CONFIRMA_POLL_MS);   /* le os detectores por nivel */
+    }
+    else if (g_amv.pendente != POS_NENHUMA)
+    {
+      espera = pdMS_TO_TICKS(T_PENDENTE_POLL_MS);   /* acorda para reavaliar */
     }
     xSemaphoreGive(g_mtx_amv);
 
     if (xQueueReceive(g_q_cmd, &c, espera) != pdTRUE)
     {
-      /* Prazo estourou sem confirmacao dos detectores. */
-      uint8_t falhou = 0;
+      /* Timeout: leitura periodica dos detectores durante a manobra, ou
+       * watchdog estourado, ou hora de reavaliar o pedido em espera (esse
+       * ultimo e' feito no topo do laco). */
+      uint8_t falhou = 0, diag = 0;
       xSemaphoreTake(g_mtx_amv, portMAX_DELAY);
       if (g_amv.estado == EST_MOVENDO)
       {
-        restringe(EST_FALHA, FALHA_TIMEOUT);
-        falhou = 1;
+        /* Confirmacao por nivel: cobre uma borda de interrupcao perdida.
+         * O log marca "confirmado=nivel" para isso nao passar despercebido. */
+        amv_pos_t det = amv_hw_detectores();
+        if (det == g_amv.comandada)
+        {
+          g_amv.detectada = det;
+          trava(inicio, 1);          /* devolve o mutex */
+          continue;
+        }
+        if (xTaskGetTickCount() - inicio >= pdMS_TO_TICKS(T_WATCHDOG_MS))
+        {
+          diag = DIAG(det, g_planta_saida, amv_hw_obstruido());
+          restringe(EST_FALHA, FALHA_TIMEOUT);
+          falhou = 1;
+        }
       }
       xSemaphoreGive(g_mtx_amv);
       if (falhou)
@@ -359,7 +435,7 @@ static void tarefa_intertravamento(void *arg)
         taskENTER_CRITICAL();
         g_stats.falhas++;
         taskEXIT_CRITICAL();
-        amv_log(LOG_FALHA, FALHA_TIMEOUT, 0, xTaskGetTickCount() - inicio);
+        amv_log(LOG_FALHA, FALHA_TIMEOUT, diag, xTaskGetTickCount() - inicio);
       }
       continue;
     }
@@ -372,18 +448,7 @@ static void tarefa_intertravamento(void *arg)
     case CMD_DET_OK:
       if (est == EST_MOVENDO && g_amv.detectada == g_amv.comandada)
       {
-        uint32_t dur = xTaskGetTickCount() - inicio;
-        g_amv.estado = EST_TRAVADO;
-        g_amv.sinal  = aspecto(&g_amv);   /* tSinal vai acender no proximo ciclo */
-        amv_pos_t pos = g_amv.comandada;
-        xSemaphoreGive(g_mtx_amv);
-
-        taskENTER_CRITICAL();
-        g_stats.manobra_ms = dur;
-        if (dur > g_stats.manobra_max_ms) g_stats.manobra_max_ms = dur;
-        g_stats.manobras++;
-        taskEXIT_CRITICAL();
-        amv_log(LOG_TRAVADO, pos, 0, dur);
+        trava(inicio, 0);            /* devolve o mutex */
         continue;
       }
       break;
@@ -392,15 +457,34 @@ static void tarefa_intertravamento(void *arg)
     case CMD_REVERSA:
     case CMD_ALTERNAR:
     {
+      /* Alternar inverte a posicao final desejada: a do pedido em espera,
+       * se houver, senao a comandada. */
+      amv_pos_t base = g_amv.pendente != POS_NENHUMA ? g_amv.pendente : g_amv.comandada;
       amv_pos_t alvo = c.tipo == CMD_NORMAL  ? POS_NORMAL
                      : c.tipo == CMD_REVERSA ? POS_REVERSA
-                     : (g_amv.comandada == POS_NORMAL ? POS_REVERSA : POS_NORMAL);
+                     : (base == POS_NORMAL ? POS_REVERSA : POS_NORMAL);
       int8_t rej = -1;
 
       if (est == EST_FALHA || est == EST_EMERGENCIA) rej = REJ_BLOQUEADO;
+      else if (alvo == g_amv.comandada)              rej = REJ_JA_NA_POSICAO;
       else if (est == EST_MOVENDO)                   rej = REJ_EM_MOVIMENTO;
       else if (amv_hw_ocupado())                     rej = REJ_OCUPADO;
-      else if (alvo == g_amv.comandada)              rej = REJ_JA_NA_POSICAO;
+
+      /* Ocupado ou em movimento: guarda o pedido (o ultimo pedido vale). */
+      if (rej == REJ_OCUPADO || rej == REJ_EM_MOVIMENTO)
+      {
+        g_amv.pendente = alvo;
+        pend_desde = xTaskGetTickCount();
+        xSemaphoreGive(g_mtx_amv);
+        amv_log(LOG_PENDENTE, alvo, (uint8_t)rej, 0);
+        continue;
+      }
+      if (rej == REJ_JA_NA_POSICAO && g_amv.pendente != POS_NENHUMA)
+      {
+        /* pedido para a posicao atual cancela o que estava em espera */
+        amv_log(LOG_PENDENTE, g_amv.pendente, REJ_JA_NA_POSICAO, 0);
+        g_amv.pendente = POS_NENHUMA;
+      }
 
       if (rej < 0)
       {
@@ -523,6 +607,7 @@ static void tarefa_planta(void *arg)
     {
       saida = nova;
       amv_hw_planta_detector(saida);
+      g_planta_saida = saida;
     }
   }
 }

@@ -81,7 +81,20 @@
   #yard { max-width: 860px; margin: 0 auto; }
   .rail { stroke: var(--rail-off); stroke-width: 6; stroke-linecap: round; fill: none; }
   .rail.on { stroke: var(--rail); }
-  .blade { stroke: var(--text-primary); stroke-width: 6; stroke-linecap: round; }
+  .leg { fill: none; stroke: transparent; stroke-width: 6; stroke-linecap: round; }
+  .amv-ring { fill: none; stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 3 3; }
+  .ag-card { fill: var(--card); stroke: var(--border); }
+  .ag-title { fill: var(--text-primary); font-size: 12px; font-weight: 600; }
+  .ag-badge { font-size: 12px; font-weight: 700; fill: var(--text-secondary); }
+  .ag-pend { fill: var(--sig-yellow); font-weight: 600; }
+  .ag-stock { stroke: var(--rail); stroke-width: 3; stroke-linecap: round; }
+  .ag-blade { stroke: var(--text-primary); stroke-width: 4; stroke-linecap: round; }
+  .ag-heel { fill: var(--text-primary); }
+  .ag-bar { stroke: var(--accent); stroke-width: 2; }
+  .ag-machine { fill: var(--lamp-off); stroke: var(--border); }
+  .ag-obs { fill: var(--bad); font-size: 11px; font-weight: 700; }
+  button.pending { border-style: dashed; border-color: var(--sig-yellow); }
+  .hint { color: var(--sig-yellow); font-size: 12px; min-height: 1.2em; max-width: 280px; }
   .svg-label { fill: var(--text-secondary); font-size: 12px; }
   .lamp { stroke: var(--border); stroke-width: 1; }
   .plot { position: relative; height: 200px; }
@@ -135,21 +148,47 @@
     <path id="p-zona" class="rail on" d="M 150 250 L 200 250"/>
     <path id="p-n" class="rail" d="M 200 250 L 470 250"/>
     <path id="p-r" class="rail" d="M 200 250 L 240 210 L 430 210 L 470 250"/>
-    <!-- agulha: pivo em (160,250), ponta em (200,250) para N ou levantada para R -->
-    <line id="blade" class="blade" x1="160" y1="250" x2="200" y2="250"/>
-    <circle cx="160" cy="250" r="4" fill="var(--text-primary)"/>
-    <text id="obs-mark" x="204" y="240" class="svg-label" visibility="hidden" style="fill:var(--bad);font-weight:700">✕ obstrução</text>
-    <!-- detectores -->
-    <circle id="det-n" cx="190" cy="272" r="6" class="lamp" fill="var(--lamp-off)"/>
-    <text x="200" y="276" class="svg-label">Det N</text>
-    <circle id="det-r" cx="206" cy="218" r="6" class="lamp" fill="var(--lamp-off)"/>
-    <text x="196" y="222" text-anchor="end" class="svg-label">Det R</text>
-    <text x="150" y="292" class="svg-label">AMV</text>
+    <!-- AMV no circuito: saida das duas rotas + marca que liga ao detalhe -->
+    <path id="leg-n" class="leg" d="M 200 250 L 236 250"/>
+    <path id="leg-r" class="leg" d="M 200 250 L 225 225"/>
+    <circle cx="180" cy="248" r="24" class="amv-ring"/>
+    <line x1="197" y1="231" x2="225" y2="196" class="amv-ring"/>
+    <text x="180" y="292" text-anchor="middle" class="svg-label">AMV</text>
+
+    <!-- detalhe da agulha (vista de cima), no centro do oval -->
+    <g id="ag" transform="translate(225,62)">
+      <rect width="280" height="132" rx="8" class="ag-card"/>
+      <text x="12" y="18" class="ag-title">Detalhe da agulha</text>
+      <text id="ag-badge" x="268" y="18" text-anchor="end" class="ag-badge">–</text>
+      <text id="ag-pend" x="268" y="34" text-anchor="end" class="svg-label ag-pend"></text>
+      <!-- trilhos fixos (encosto) da via reta e da desviada -->
+      <line x1="66" y1="62" x2="270" y2="62" class="ag-stock"/>
+      <line x1="66" y1="92" x2="270" y2="92" class="ag-stock"/>
+      <line x1="150" y1="62" x2="270" y2="36" class="ag-stock"/>
+      <line x1="196" y1="84" x2="270" y2="66" class="ag-stock"/>
+      <text x="266" y="81" text-anchor="end" class="svg-label">Normal</text>
+      <text x="266" y="50" text-anchor="end" class="svg-label" transform="rotate(-11 266 50)">Reversa</text>
+      <!-- agulhas moveis: pontas em x=80, calcanhar fixo em x=160 -->
+      <line id="ag-blade-u" x1="80" y1="70" x2="160" y2="65" class="ag-blade"/>
+      <line id="ag-blade-l" x1="80" y1="92" x2="160" y2="89" class="ag-blade"/>
+      <circle cx="160" cy="65" r="2.5" class="ag-heel"/>
+      <circle cx="160" cy="89" r="2.5" class="ag-heel"/>
+      <!-- tirante + haste da maquina de chave -->
+      <line id="ag-bar" x1="84" y1="70" x2="84" y2="92" class="ag-bar"/>
+      <line id="ag-rod" x1="84" y1="110" x2="84" y2="92" class="ag-bar"/>
+      <rect x="64" y="110" width="40" height="14" rx="3" class="ag-machine"/>
+      <text id="ag-ang" x="112" y="121" class="svg-label">máquina de chave –</text>
+      <!-- detectores de fim de curso (contato da ponta com o trilho) -->
+      <circle id="det-r" cx="54" cy="56" r="5" class="lamp" fill="var(--lamp-off)"/>
+      <text x="45" y="60" text-anchor="end" class="svg-label">Det R</text>
+      <circle id="det-n" cx="54" cy="98" r="5" class="lamp" fill="var(--lamp-off)"/>
+      <text x="45" y="102" text-anchor="end" class="svg-label">Det N</text>
+      <text id="obs-mark" x="88" y="66" class="ag-obs" visibility="hidden">✕ obstrução</text>
+    </g>
     <text x="335" y="276" text-anchor="middle" class="svg-label">Normal (linha principal)</text>
     <text x="335" y="234" text-anchor="middle" class="svg-label">Reversa (ramal, 30 km/h)</text>
     <text x="470" y="276" text-anchor="middle" class="svg-label">junção de mola</text>
     <text x="335" y="40" text-anchor="middle" class="svg-label">← sentido do trem</text>
-    <text id="ang-label" x="335" y="150" text-anchor="middle" class="svg-label">ângulo –</text>
     <!-- sinal de protecao (posicionado pelo script, 40 m antes do AMV) -->
     <g id="sig">
       <line id="sig-mast" stroke="var(--rail)" stroke-width="3"/>
@@ -188,6 +227,7 @@
           <button data-cmd="r" id="b-r">Reversa</button>
           <button data-cmd="t">Alternar</button>
         </div>
+        <div id="man-msg" class="hint"></div>
       </div>
       <div class="group"><span class="label">Velocidade do trem (0 a 80 km/h)</span>
         <div class="row">
@@ -366,17 +406,47 @@
     $("occ-a").setAttribute("stroke-dasharray", `0 ${ini} ${len - ini} ${len}`);
   })();
 
+  const EST_BADGE = {
+    travado: (s) => [`TRAVADO · ${POS[s.cmd]}`, css("--ok")],
+    movendo: (s) => [`MOVENDO → ${POS[s.cmd]}`, css("--sig-yellow")],
+    falha: (s) => [`FALHA: ${s.falha}`, css("--bad")],
+    emergencia: () => ["EMERGÊNCIA", css("--bad")],
+  };
+
   function drawYard(s) {
+    // frac: 0 = agulha em Normal (45°), 1 = em Reversa (135°)
     const frac = Math.min(1, Math.max(0, (s.ang - ANG_N) / (ANG_R - ANG_N)));
-    $("blade").setAttribute("y2", String(250 - frac * 9));
-    $("ang-label").textContent = `máquina de chave: ${(s.ang / 100).toFixed(1)}°`;
     const col = SIG_COLOR();
     const locked = s.est === "travado";
+
+    // circuito: rotas e trecho de saida do AMV
     for (const k of ["N", "R"]) {
       const lit = locked && s.cmd === k;
       P[k].classList.toggle("on", lit || s.det === k);
       P[k].style.stroke = lit ? col[s.sig] : "";
+      const leg = $(k === "N" ? "leg-n" : "leg-r");
+      leg.style.stroke = lit ? col[s.sig] : s.cmd === k ? css("--sig-yellow") : "transparent";
+      leg.style.strokeDasharray = lit ? "" : "4 3";
     }
+
+    // detalhe: pontas das agulhas. N: agulha de baixo encostada (y 92),
+    // de cima aberta (y 70). R: de cima encostada (y 62), de baixo aberta (y 84).
+    const up = 70 - 8 * frac, lo = 92 - 8 * frac;
+    $("ag-blade-u").setAttribute("y1", up);
+    $("ag-blade-l").setAttribute("y1", lo);
+    $("ag-bar").setAttribute("y1", up);
+    $("ag-bar").setAttribute("y2", lo);
+    $("ag-rod").setAttribute("y2", lo);
+    $("ag-ang").textContent = `máquina de chave ${(s.ang / 100).toFixed(1).replace(".", ",")}°`;
+    const [txt, cor] = (EST_BADGE[s.est] || (() => [s.est, css("--text-secondary")]))(s);
+    $("ag-badge").textContent = txt;
+    $("ag-badge").style.fill = cor;
+    const pend = s.pend && s.pend !== "-" ? s.pend : null;
+    $("ag-pend").textContent = pend ? `pedido em espera: ${POS[pend]}` : "";
+    const bladeCol = s.est === "falha" || s.est === "emergencia" ? css("--bad")
+                   : locked ? css("--text-primary") : css("--sig-yellow");
+    for (const id of ["ag-blade-u", "ag-blade-l"]) $(id).style.stroke = bladeCol;
+
     $("lamp-r").setAttribute("fill", s.sig === "vermelho" ? col.vermelho : css("--lamp-off"));
     $("lamp-y").setAttribute("fill", s.sig === "amarelo" ? col.amarelo : css("--lamp-off"));
     $("lamp-g").setAttribute("fill", s.sig === "verde" ? col.verde : css("--lamp-off"));
@@ -385,7 +455,9 @@
     const vis = (on) => (on ? "visible" : "hidden");
     $("occ-a").setAttribute("visibility", vis(s.occ));
     $("occ-b").setAttribute("visibility", vis(s.occ));
+    // obstrucao: aparece no vao da ponta que deveria encostar
     $("obs-mark").setAttribute("visibility", vis(s.obs));
+    $("obs-mark").setAttribute("y", s.cmd === "R" ? 58 : 104);
   }
 
   // ---------- trem ----------
@@ -449,7 +521,14 @@
     $("v-t").textContent = (s.t / 1000).toFixed(1);
     $("b-n").classList.toggle("active", s.cmd === "N");
     $("b-r").classList.toggle("active", s.cmd === "R");
-    occ = s.occ; obs = s.obs;
+    // occv/obsv = so' o que foi forcado pelo painel (occ tambem inclui o trem)
+    occ = s.occv ?? s.occ; obs = s.obsv ?? s.obs;
+    const pend = s.pend && s.pend !== "-" ? s.pend : null;
+    $("b-n").classList.toggle("pending", pend === "N");
+    $("b-r").classList.toggle("pending", pend === "R");
+    $("man-msg").textContent = pend
+      ? `Pedido para ${POS[pend]} em espera (${s.est === "movendo" ? "manobra em curso" : "trem no circuito de via"}). Executa sozinho quando liberar.`
+      : "";
     $("b-occ").classList.toggle("active", !!occ);
     $("b-obs").classList.toggle("active", !!obs);
   }
@@ -483,7 +562,7 @@
     const line = document.createElement("div");
     line.textContent = ev.text;
     if (ev.type === "ev") {
-      const ruim = ["falha", "emergencia", "rejeitado"].includes(ev.name)
+      const ruim = ["falha", "emergencia", "rejeitado"].includes(ev.name) || ev.cancelado
                 || ["passou_vermelho", "descarrilou"].includes(ev.evento);
       line.className = ruim ? "ev bad" : "ev";
     }

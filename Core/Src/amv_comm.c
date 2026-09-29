@@ -8,7 +8,9 @@
  *
  * Protocolo (uma linha por mensagem, lido por tools/painel_amv.py):
  *   st t=<ms> est=<estado> cmd=<N|R> det=<N|R|-|NR> sig=<vermelho|amarelo|verde>
- *      ang=<cdeg> occ=<0|1> obs=<0|1> falha=<tipo>            (a cada 250 ms)
+ *      ang=<cdeg> occ=<0|1> obs=<0|1> falha=<tipo> pend=<-|N|R>
+ *      occv=<0|1> obsv=<0|1>                                    (a cada 250 ms)
+ *      (occ/obs = efeito total; occv/obsv = so' o que foi forcado por comando)
  *   ev t=<ms> <evento> chave=valor...                          (eventos)
  *   tm lat_emg=<ult>/<max> lat_perda=... lat_cmd=... manobra=... jit=...
  *   tr t=<ms> seg=<volta|zona|rota> s=<mm> rota=<N|R> v=<mm/s> vmax=<km/h>
@@ -37,7 +39,7 @@ static const char *const NOME_POS[]    = { "-", "N", "R", "NR" };
 static const char *const NOME_SINAL[]  = { "vermelho", "amarelo", "verde" };
 static const char *const NOME_FALHA[]  = { "nenhuma", "timeout", "perda_det", "det_dupla" };
 static const char *const NOME_REJ[]    = { "ocupado", "em_movimento", "bloqueado", "ja_na_posicao" };
-static const char *const NOME_ORIGEM[] = { "serial", "botao", "sistema" };
+static const char *const NOME_ORIGEM[] = { "serial", "botao", "sistema", "fila" };
 static const char *const NOME_SEG[]    = { "volta", "zona", "rota" };
 static const char *const NOME_TREM_EV[] = { "entrou", "passou_vermelho", "descarrilou", "recolocado" };
 
@@ -50,13 +52,15 @@ static void envia(const char *s)
 static void envia_status(void)
 {
   amv_status_t s;
-  char buf[128];
+  char buf[160];
   amv_status_copia(&s);
   snprintf(buf, sizeof(buf),
-           "st t=%lu est=%s cmd=%s det=%s sig=%s ang=%u occ=%u obs=%u falha=%s\r\n",
+           "st t=%lu est=%s cmd=%s det=%s sig=%s ang=%u occ=%u obs=%u falha=%s "
+           "pend=%s occv=%u obsv=%u\r\n",
            (unsigned long)xTaskGetTickCount(), NOME_EST[s.estado], NOME_POS[s.comandada],
            NOME_POS[s.detectada], NOME_SINAL[s.sinal], (unsigned)g_angulo_cdeg,
-           s.ocupado, s.obstruido, NOME_FALHA[s.falha]);
+           s.ocupado, s.obstruido, NOME_FALHA[s.falha], NOME_POS[s.pendente],
+           g_ocupado_virtual, g_obstruido_virtual);
   envia(buf);
 }
 
@@ -115,22 +119,39 @@ static void envia_log(const log_msg_t *m)
   switch (m->tipo)
   {
   case LOG_PEDIDO:
-    snprintf(buf, sizeof(buf), "ev t=%lu pedido alvo=%s origem=%s lat_us=%lu\r\n",
+    /* pedido que veio da fila: v = quanto tempo ficou esperando (ms) */
+    snprintf(buf, sizeof(buf), m->b == ORIG_FILA
+                               ? "ev t=%lu pedido alvo=%s origem=%s espera_ms=%lu\r\n"
+                               : "ev t=%lu pedido alvo=%s origem=%s lat_us=%lu\r\n",
              t, NOME_POS[m->a], NOME_ORIGEM[m->b], (unsigned long)m->v);
     break;
+  case LOG_PENDENTE:
+    if (m->b == REJ_BLOQUEADO || m->b == REJ_JA_NA_POSICAO)
+      snprintf(buf, sizeof(buf), "ev t=%lu pendente alvo=%s cancelado=%s\r\n",
+               t, NOME_POS[m->a], m->b == REJ_BLOQUEADO ? "falha" : "novo_pedido");
+    else
+      snprintf(buf, sizeof(buf), "ev t=%lu pendente alvo=%s motivo=%s\r\n",
+               t, NOME_POS[m->a], NOME_REJ[m->b]);
+    envia(buf);
+    return;
   case LOG_REJEITADO:
     snprintf(buf, sizeof(buf), "ev t=%lu rejeitado motivo=%s origem=%s\r\n",
              t, NOME_REJ[m->a], NOME_ORIGEM[m->b]);
     break;
   case LOG_TRAVADO:
-    snprintf(buf, sizeof(buf), "ev t=%lu travado pos=%s manobra_ms=%lu\r\n",
-             t, NOME_POS[m->a], (unsigned long)m->v);
+    snprintf(buf, sizeof(buf), "ev t=%lu travado pos=%s manobra_ms=%lu confirmado=%s\r\n",
+             t, NOME_POS[m->a], (unsigned long)m->v, m->b ? "nivel" : "interrupcao");
     break;
   case LOG_FALHA:
-    snprintf(buf, sizeof(buf), m->a == FALHA_TIMEOUT
-                               ? "ev t=%lu falha tipo=%s apos_ms=%lu\r\n"
-                               : "ev t=%lu falha tipo=%s lat_us=%lu\r\n",
-             t, NOME_FALHA[m->a], (unsigned long)m->v);
+    if (m->a == FALHA_TIMEOUT)
+      /* diagnostico: onde a cadeia motor -> planta -> fio -> pino parou */
+      snprintf(buf, sizeof(buf),
+               "ev t=%lu falha tipo=timeout apos_ms=%lu ang=%u planta=%s pinos=%s obs=%u\r\n",
+               t, (unsigned long)m->v, (unsigned)g_angulo_cdeg, NOME_POS[DIAG_PLANTA(m->b)],
+               NOME_POS[DIAG_PINOS(m->b)], DIAG_OBS(m->b));
+    else
+      snprintf(buf, sizeof(buf), "ev t=%lu falha tipo=%s lat_us=%lu\r\n",
+               t, NOME_FALHA[m->a], (unsigned long)m->v);
     break;
   case LOG_EMERGENCIA:
     snprintf(buf, sizeof(buf), "ev t=%lu emergencia lat_us=%lu\r\n", t, (unsigned long)m->v);

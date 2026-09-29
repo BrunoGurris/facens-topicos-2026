@@ -189,6 +189,14 @@ $(BUILD_DIR):
 	mkdir -p $@		
 
 #######################################
+# testes no PC (FreeRTOS POSIX + hardware falso), ver tests/run.sh
+#######################################
+test:
+	tests/run.sh
+
+.PHONY: test
+
+#######################################
 # clean up
 #######################################
 clean:

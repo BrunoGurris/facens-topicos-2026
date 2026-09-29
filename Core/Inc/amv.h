@@ -31,6 +31,7 @@
 #define T_SINAL_PERIODO_MS     50
 #define T_STATUS_PERIODO_MS    250
 #define T_DEBOUNCE_MS          200
+#define T_PENDENTE_POLL_MS     50      /* reavalia o pedido em espera          */
 
 /* Angulos da maquina de chave, em centesimos de grau (evita float no M0+) */
 #define ANG_NORMAL_CDEG        4500    /* 45 graus  */
@@ -99,6 +100,7 @@ typedef struct {
   amv_falha_t  falha;
   uint8_t      ocupado;       /* circuito de via */
   uint8_t      obstruido;     /* injecao de falha (simulacao) */
+  amv_pos_t    pendente;      /* pedido em espera (POS_NENHUMA = nenhum) */
 } amv_status_t;
 
 /* Eventos para a tarefa de seguranca (fila g_q_seg) -- vem de ISR */
@@ -110,7 +112,7 @@ typedef struct {
 
 /* Comandos para o intertravamento (fila g_q_cmd) */
 typedef enum { CMD_NORMAL = 0, CMD_REVERSA, CMD_ALTERNAR, CMD_REARME, CMD_DET_OK } cmd_tipo_t;
-typedef enum { ORIG_SERIAL = 0, ORIG_BOTAO, ORIG_SISTEMA } cmd_origem_t;
+typedef enum { ORIG_SERIAL = 0, ORIG_BOTAO, ORIG_SISTEMA, ORIG_FILA } cmd_origem_t;
 typedef struct {
   uint8_t  tipo;     /* cmd_tipo_t   */
   uint8_t  origem;   /* cmd_origem_t */
@@ -128,11 +130,14 @@ typedef struct {
 typedef enum {
   LOG_PEDIDO = 0,     /* a=posicao alvo, b=origem, v=latencia pedido->motor (us) */
   LOG_REJEITADO,      /* a=motivo, b=origem                                      */
-  LOG_TRAVADO,        /* a=posicao, v=duracao da manobra (ms)                    */
-  LOG_FALHA,          /* a=amv_falha_t, v=latencia ate sinal vermelho (us)       */
+  LOG_TRAVADO,        /* a=posicao, b=1 se confirmado por nivel, v=duracao (ms)  */
+  LOG_FALHA,          /* a=amv_falha_t, v=latencia ate sinal vermelho (us);      */
+                      /* timeout: b=diagnostico (DIAG_*), v=ms desde o inicio    */
   LOG_EMERGENCIA,     /* v=latencia botao -> sinal vermelho (us)                 */
   LOG_REARME,
   LOG_TREM,           /* a=trem_evento_t, b=rota, v=velocidade (km/h)            */
+  LOG_PENDENTE,       /* a=alvo, b=motivo; cancelado: b=REJ_BLOQUEADO (falha)    */
+                      /* ou REJ_JA_NA_POSICAO (pedido novo p/ posicao atual)     */
 } log_tipo_t;
 typedef enum { REJ_OCUPADO = 0, REJ_EM_MOVIMENTO, REJ_BLOQUEADO, REJ_JA_NA_POSICAO } rej_motivo_t;
 typedef struct {
@@ -181,6 +186,15 @@ extern SemaphoreHandle_t g_sem_tx;
 extern amv_status_t      g_amv;       /* so' com g_mtx_amv */
 extern amv_stats_t       g_stats;     /* so' com taskENTER_CRITICAL */
 extern volatile uint16_t g_angulo_cdeg;  /* escrito so' pelo tMotor (16 bits = atomico) */
+extern volatile uint8_t  g_planta_saida; /* amv_pos_t que a tPlanta esta' mandando nos fios */
+
+/* Diagnostico do timeout (campo b do LOG_FALHA): o que se via no instante */
+#define DIAG_PINOS(b)   ((b) & 0x3)          /* amv_pos_t lido em PA0/PA1   */
+#define DIAG_PLANTA(b)  (((b) >> 2) & 0x3)   /* amv_pos_t na saida PB4/PB5  */
+#define DIAG_OBS(b)     (((b) >> 4) & 0x1)   /* obstrucao ativa             */
+#define DIAG(pinos, planta, obs) ((uint8_t)((pinos) | ((planta) << 2) | ((obs) << 4)))
+
+#define T_CONFIRMA_POLL_MS     50      /* leitura por nivel dos detectores na manobra */
 
 /* ======================================================================
  * Funcoes

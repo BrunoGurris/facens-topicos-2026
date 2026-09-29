@@ -21,7 +21,7 @@ Pontos críticos do processo:
 |---|---|---|
 | Agulha não encosta (pedra, gelo, desgaste) | descarrilamento na agulha | detector de fim de curso precisa confirmar em até `T_WATCHDOG`; senão, **falha** |
 | Agulha abre com o trem liberado | descarrilamento | perda de detecção → sinal **vermelho** em microssegundos |
-| Mover o AMV com trem em cima | descarrilamento / dano | pedido **rejeitado** se o circuito de via indica ocupação |
+| Mover o AMV com trem em cima | descarrilamento / dano | com o circuito de via ocupado, o pedido fica **em espera** e só é executado quando o trem libera |
 | Sinal abre antes do AMV travar | trem entra em rota errada | o sinal só sai do vermelho no estado `TRAVADO` e com detecção = comando |
 | Emergência | colisão | botão leva tudo ao estado seguro, e só um **rearme** explícito volta |
 
@@ -101,9 +101,31 @@ stateDiagram-v2
     EMERGENCIA --> MOVENDO: rearme (refaz a manobra)
 ```
 
+**Confirmação da posição por dois caminhos:** a borda do detector chega
+por interrupção (`tSeg` → `CMD_DET_OK`, caminho rápido) e, durante a manobra, o
+`tInter` também lê o **nível** dos detectores a cada 50 ms
+(`T_CONFIRMA_POLL_MS`). Se uma borda se perder, a manobra ainda trava, e o
+evento mostra `travado ... confirmado=nivel` para isso ficar visível.
+
+Quando o watchdog estoura, o evento de falha traz o diagnóstico de onde a
+cadeia motor → planta → fio → pino parou:
+`falha tipo=timeout apos_ms=4500 ang=13500 planta=R pinos=- obs=0`
+(neste exemplo, o contato foi gerado em PB5 mas não chegou em PA1).
+
 Um pedido é **rejeitado** quando o estado é `FALHA` ou `EMERGENCIA`
-(bloqueado), quando o AMV está `MOVENDO` (em movimento), quando a via está
-ocupada, ou quando o AMV já está na posição pedida.
+(bloqueado) ou quando o AMV já está (ou já está indo) para a posição pedida.
+
+Quando o **circuito de via está ocupado** ou o AMV está **em movimento**, o
+pedido não é descartado: fica **em espera** (*route stacking*, `ev pendente`).
+O `tInter` reavalia a espera a cada volta do laço e, enquanto houver pedido
+guardado, acorda a cada 50 ms (`T_PENDENTE_POLL_MS`). Assim que o AMV estiver
+travado e o circuito livre, a manobra sai sozinha (`ev pedido origem=fila
+espera_ms=…`). Vale o último pedido, e um pedido para a posição atual cancela a
+espera. Falha ou emergência também cancelam (`ev pendente cancelado=falha`).
+
+Isso importa porque, com o trem circulando, o circuito fica ocupado de 23 %
+(20 km/h) a 68 % (80 km/h) do tempo (medido na simulação do `tTrem`). Sem a
+fila, a maioria dos pedidos seria perdida.
 
 ---
 
@@ -335,7 +357,27 @@ na ordem de dezenas de µs, dominado pela granularidade do tick.
 
 ---
 
-## 6. Como medir (capítulo 5 do relatório)
+## 6. Testes automáticos (lógica)
+
+`make test` roda as tarefas reais sobre o FreeRTOS POSIX com hardware
+simulado (ver README, seção 6). Resultado atual, que pode ir para o capítulo 5
+como verificação funcional antes da medição no simulador:
+
+| Cenário | Resultado | Manobras | Manobra (último/máx) |
+|---|---|---|---|
+| `manobras` (trem a 40 km/h) | ok | 7 | 3 100 / 3 109 ms |
+| `trem80` (pedidos vindos da fila) | ok | 7 | 3 100 / 3 109 ms |
+| `cliques` (espera/cancelamento) | ok | 5 | 3 100 / 3 109 ms |
+| `emergencia` + rearme | ok | 4 | 3 100 / 3 108 ms |
+| `fila` (ocupação) | ok | 2 | 3 108 ms |
+| `obstrucao` (perda de detecção → timeout → rearme) | ok | 2 | – |
+| `fio_quebrado` (diagnóstico) | ok | 1 | – |
+
+A duração da manobra bate com o cálculo da seção 5.2 (≈ 3 100 a 3 120 ms).
+As latências em µs medidas no PC não valem para a placa, porque ali o
+"hardware" é um processo do Linux.
+
+## 7. Como medir no simulador (capítulo 5 do relatório)
 
 1. `./build.sh` → print da tela com o `arm-none-eabi-size` (tamanho do firmware).
 2. No VS Code: F1 → `Wokwi: Start Simulator`. O painel conecta sozinho.
@@ -345,7 +387,7 @@ na ordem de dezenas de µs, dominado pela granularidade do tick.
 |---|---|---|
 | 1 | boot | vai de 90° para Normal, trava em ≈ 1,6 s, sinal **verde** |
 | 2 | `r` (ou botão N/R) | sinal vermelho na hora, manobra ≈ 3,1 s, trava, sinal **amarelo** |
-| 3 | ligar "Ocupar via" e pedir `n` | `rejeitado motivo=ocupado`, nada se move |
+| 3 | ligar "Ocupar via" e pedir `n` | `pendente alvo=N motivo=ocupado`, nada se move; ao desligar, a manobra sai sozinha |
 | 4 | desligar ocupação, ligar "Obstruir agulha" com o AMV travado | `falha tipo=perda_det lat_us=…`, vermelho |
 | 5 | com obstrução, `rearme` | refaz a manobra e, sem detecção, `falha tipo=timeout apos_ms≈4500` |
 | 6 | tirar obstrução, `rearme` | trava de novo |
@@ -353,7 +395,7 @@ na ordem de dezenas de µs, dominado pela granularidade do tick.
 | 8 | `stats` | tabela de tempos + pilha livre de cada tarefa |
 | 9 | `reiniciar` (botão "Reiniciar tudo") | reset por software (`NVIC_SystemReset`): tempo e medições zerados, repete o teste 1 |
 | 10 | com o trem a 40 km/h, pedir `r` quando ele estiver longe do sinal | AMV manobra, sinal amarelo, trem entra no ramal a ≤ 30 km/h |
-| 11 | pedir `n` com o trem entre a distância de frenagem e o AMV | `rejeitado motivo=ocupado` (aproximação travada) |
+| 11 | pedir `n` com o trem entre a distância de frenagem e o AMV | `pendente motivo=ocupado` (aproximação travada); a manobra sai quando a cauda deixa o AMV |
 | 12 | `vel 80` e `emg` com o trem a poucos metros do sinal | frenagem de emergência; se não der para parar, `trem evento=passou_vermelho` |
 | 13 | `obs 1` com o trem se aproximando a 80 km/h | falha de detecção → vermelho → emergência; se a agulha ficar sem detecção sob o trem, `descarrilou` (`trem` recoloca) |
 
