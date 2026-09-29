@@ -132,7 +132,7 @@ amv_pos_t amv_hw_detectores(void)
 uint8_t amv_hw_ocupado(void)
 {
   return HAL_GPIO_ReadPin(Ocupacao_GPIO_Port, Ocupacao_Pin) == GPIO_PIN_RESET
-         || g_ocupado_virtual;
+         || g_ocupado_virtual || g_trem_ocupado;
 }
 
 uint8_t amv_hw_obstruido(void)

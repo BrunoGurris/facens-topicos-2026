@@ -11,10 +11,12 @@
  *      ang=<cdeg> occ=<0|1> obs=<0|1> falha=<tipo>            (a cada 250 ms)
  *   ev t=<ms> <evento> chave=valor...                          (eventos)
  *   tm lat_emg=<ult>/<max> lat_perda=... lat_cmd=... manobra=... jit=...
+ *   tr t=<ms> seg=<volta|zona|rota> s=<mm> rota=<N|R> v=<mm/s> vmax=<km/h>
+ *      freio=<0|1|2> occ=<0|1> desc=<0|1>                       (a cada 100 ms)
  *   ok <comando> | err <motivo>                                (respostas)
  *
  * Comandos: n|normal, r|reversa, t|alternar, emg, rearme, occ 0|1, obs 0|1,
- *           status, stats, help
+ *           vel <km/h>, trem, reiniciar, status, stats, help
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +30,7 @@ volatile uint8_t g_ocupado_virtual;
 volatile uint8_t g_obstruido_virtual;
 
 #define LINHA_MAX 24
+#define T_TREM_TELEMETRIA_MS 100
 
 static const char *const NOME_EST[]    = { "movendo", "travado", "falha", "emergencia" };
 static const char *const NOME_POS[]    = { "-", "N", "R", "NR" };
@@ -35,6 +38,8 @@ static const char *const NOME_SINAL[]  = { "vermelho", "amarelo", "verde" };
 static const char *const NOME_FALHA[]  = { "nenhuma", "timeout", "perda_det", "det_dupla" };
 static const char *const NOME_REJ[]    = { "ocupado", "em_movimento", "bloqueado", "ja_na_posicao" };
 static const char *const NOME_ORIGEM[] = { "serial", "botao", "sistema" };
+static const char *const NOME_SEG[]    = { "volta", "zona", "rota" };
+static const char *const NOME_TREM_EV[] = { "entrou", "passou_vermelho", "descarrilou", "recolocado" };
 
 static void envia(const char *s)
 {
@@ -52,6 +57,19 @@ static void envia_status(void)
            (unsigned long)xTaskGetTickCount(), NOME_EST[s.estado], NOME_POS[s.comandada],
            NOME_POS[s.detectada], NOME_SINAL[s.sinal], (unsigned)g_angulo_cdeg,
            s.ocupado, s.obstruido, NOME_FALHA[s.falha]);
+  envia(buf);
+}
+
+static void envia_trem(void)
+{
+  trem_t t;
+  char buf[112];
+  amv_trem_copia(&t);
+  snprintf(buf, sizeof(buf),
+           "tr t=%lu seg=%s s=%lu rota=%s v=%lu vmax=%u freio=%u occ=%u desc=%u\r\n",
+           (unsigned long)xTaskGetTickCount(), NOME_SEG[t.seg], (unsigned long)t.s_mm,
+           NOME_POS[t.rota], (unsigned long)t.v_mms, g_trem_vel_kmh, t.freio,
+           t.ocupado, t.descarrilado);
   envia(buf);
 }
 
@@ -120,6 +138,11 @@ static void envia_log(const log_msg_t *m)
   case LOG_REARME:
     snprintf(buf, sizeof(buf), "ev t=%lu rearme origem=%s\r\n", t, NOME_ORIGEM[m->b]);
     break;
+  case LOG_TREM:
+    snprintf(buf, sizeof(buf), "ev t=%lu trem evento=%s rota=%s v_kmh=%lu\r\n",
+             t, NOME_TREM_EV[m->a], NOME_POS[m->b], (unsigned long)m->v);
+    envia(buf);
+    return;
   default:
     return;
   }
@@ -148,12 +171,32 @@ static void executa(char *cmd)
   }
   else if (!strncmp(cmd, "occ ", 4))  g_ocupado_virtual   = atoi(cmd + 4) != 0;
   else if (!strncmp(cmd, "obs ", 4))  g_obstruido_virtual = atoi(cmd + 4) != 0;
+  else if (!strncmp(cmd, "vel ", 4))
+  {
+    int kmh = atoi(cmd + 4);
+    if (kmh < 0 || kmh > (int)TREM_V_MAX_KMH)
+    {
+      snprintf(resp, sizeof(resp), "err vel fora de 0..%u km/h\r\n", TREM_V_MAX_KMH);
+      envia(resp);
+      return;
+    }
+    g_trem_vel_kmh = (uint8_t)kmh;
+  }
+  else if (!strcmp(cmd, "trem"))       g_trem_recolocar = 1;   /* recoloca nos trilhos */
+  else if (!strcmp(cmd, "reiniciar"))
+  {
+    /* Reset completo do microcontrolador: tick volta a 0, estatisticas e
+     * estado sao zerados e o AMV refaz o boot (vai para Normal). */
+    envia("ok reiniciar\r\n");
+    vTaskDelay(pdMS_TO_TICKS(5));   /* deixa a resposta sair pela serial */
+    NVIC_SystemReset();
+  }
   else if (!strcmp(cmd, "status"))    { envia_status(); return; }
   else if (!strcmp(cmd, "stats"))     { envia_tempos(); envia_pilhas(); return; }
   else if (!strcmp(cmd, "help"))
   {
     envia("comandos: n|normal, r|reversa, t|alternar, emg, rearme, "
-          "occ 0|1, obs 0|1, status, stats, help\r\n");
+          "occ 0|1, obs 0|1, vel <km/h>, trem, reiniciar, status, stats, help\r\n");
     return;
   }
   else
@@ -173,6 +216,7 @@ void tarefa_comm(void *arg)
   uint8_t    len = 0, ch;
   log_msg_t  m;
   TickType_t prox_status = xTaskGetTickCount();
+  TickType_t prox_trem   = prox_status;
 
   amv_hw_uart_rx_start();
   envia("\r\nAMV: controle de desvio ferroviario (FreeRTOS " tskKERNEL_VERSION_NUMBER ")\r\n"
@@ -210,6 +254,11 @@ void tarefa_comm(void *arg)
     {
       prox_status += pdMS_TO_TICKS(T_STATUS_PERIODO_MS);
       envia_status();
+    }
+    if ((int32_t)(xTaskGetTickCount() - prox_trem) >= 0)
+    {
+      prox_trem += pdMS_TO_TICKS(T_TREM_TELEMETRIA_MS);
+      envia_trem();
     }
   }
 }

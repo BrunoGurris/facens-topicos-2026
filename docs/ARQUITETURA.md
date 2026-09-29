@@ -45,10 +45,43 @@ abaixo mostra o que cada componente real vira no simulador Wokwi.
 | Botão de emergência | botão vermelho (ou `emg`) | PC13 (EXTI13) |
 | Rearme | botão amarelo (ou `rearme`) | PB3 (amostrado a 50 ms) |
 | "CPU viva" | LD4 piscando a 1 Hz | PA5 |
+| Trem | tarefa `tTrem` (simulação), desenhado no painel web | ocupa o circuito de via |
 
 Aspecto do sinal: **verde** = travado em Normal (via direta), **amarelo** =
 travado em Reversa (via desviada, velocidade reduzida), **vermelho** = qualquer
 outro caso.
+
+### 1.2 O trem simulado (`tTrem`, `amv_trem.c`)
+
+Para exercitar o intertravamento com um trem de verdade circulando, a tarefa
+`tTrem` simula um trem de 30 m num circuito fechado. Os comprimentos estão em
+`amv.h` e batem com o desenho do painel.
+
+```
+ VOLTA (335 m) --[sinal, 40 m antes]--> AMV (16 m) --> Normal (86 m) ---+
+   ^                                                \-> Reversa (97 m) --+
+   +------------------------- junção de mola <----------------------------+
+```
+
+- **Velocidade**: definida pelo operador (`vel <km/h>`, 0 a 80; padrão 40).
+- **Obedece o sinal com curva de frenagem** (como um ATP):
+  v_perm = √(v_final² + 2·a·d), com a = 1,2 m/s² (serviço). No vermelho, para
+  5 m antes do sinal. No amarelo, chega a 30 km/h e mantém esse limite até sair do ramal.
+- **Frenagem de emergência** (2,5 m/s²): se o sinal fecha quando nem 110 % da
+  frenagem de serviço é suficiente. Fica aplicada até o trem parar, e ele só volta
+  a andar quando o sinal abrir. Se nem a emergência basta, o trem **passa o
+  sinal vermelho** (evento `passou_vermelho`).
+- **Circuito de via** (entra em `amv_hw_ocupado()`): ocupado do sinal até a
+  cauda sair do AMV, e também antes do sinal quando o trem **já não consegue
+  parar** nele (*travamento de aproximação*). Isso impede mover o AMV na frente
+  de um trem comprometido.
+- **Descarrilamento**: ao chegar no AMV, o trem segue a rota que os
+  **detectores** indicam. Se a agulha não estiver encostada de nenhum lado
+  (obstrução, manobra em curso), ele descarrila (evento `descarrilou`; o
+  comando `trem` recoloca).
+
+Distâncias de frenagem de serviço: 40 km/h → 51 m, 60 km/h → 116 m,
+80 km/h → 206 m (cabe nos 290 m da volta; por isso o limite de 80 km/h).
 
 ---
 
@@ -76,7 +109,7 @@ ocupada, ou quando o AMV já está na posição pedida.
 
 ## 3. Tarefas, prioridades e recursos do RTOS
 
-### 3.1 Tarefas (6 da aplicação + idle)
+### 3.1 Tarefas (7 da aplicação + idle)
 
 | Tarefa | Prio | Ativação | Pilha (palavras) | Função |
 |---|---|---|---|---|
@@ -85,7 +118,8 @@ ocupada, ou quando o AMV já está na posição pedida.
 | `tInter` | 3 | evento `g_q_cmd` + timeout (watchdog) | 128 | máquina de estados do intertravamento |
 | `tSinal` | 2 | periódica 50 ms | 96 | escreve o aspecto do sinal, lê ocupação, rearme, heartbeat |
 | `tPlanta` | 2 | periódica 10 ms | 96 | **simulação** dos contatos dos detectores (não existe no campo) |
-| `tComm` | 1 | evento `g_q_log` (e varre `g_q_rx` a cada 10 ms) | 256 | protocolo serial, telemetria de 250 ms |
+| `tTrem` | 2 | periódica 50 ms | 128 | **simulação** do trem no circuito: obedece o sinal, ocupa a via (seção 1.2) |
+| `tComm` | 1 | evento `g_q_log` (e varre `g_q_rx` a cada 10 ms) | 256 | protocolo serial, telemetria (AMV a 250 ms, trem a 100 ms) |
 | idle | 0 | (kernel) | 80 | roda quando nada mais está pronto |
 
 As prioridades seguem a **criticidade**: quem leva ao estado seguro vem
@@ -99,11 +133,12 @@ a lógica de decisão e, por último, a interface.
 | `g_q_seg` | fila | 8 × 4 B | ISR EXTI (detectores, emergência), `tComm` (`emg`) | `tSeg` |
 | `g_q_cmd` | fila | 8 × 4 B | ISR EXTI (botão N/R), `tComm`, `tSinal` (rearme), `tSeg` (`DET_OK`) | `tInter` |
 | `g_q_motor` | fila | 4 × 4 B | `tInter` (MOVER), `tSeg`/`tInter` (PARAR, **na frente da fila**) | `tMotor` |
-| `g_q_log` | fila | 12 × 12 B | `tSeg`, `tInter` (sem bloquear) | `tComm` |
+| `g_q_log` | fila | 12 × 12 B | `tSeg`, `tInter`, `tTrem` (sem bloquear) | `tComm` |
 | `g_q_rx` | fila | 32 × 1 B | ISR USART2 (RX) | `tComm` |
-| `g_mtx_amv` | **mutex** (herança de prioridade) | – | protege `g_amv`: `tSeg`, `tInter`, `tSinal`, `tComm` (leitura) | – |
+| `g_mtx_amv` | **mutex** (herança de prioridade) | – | protege `g_amv`: `tSeg`, `tInter`, `tSinal`; leitura por `tComm` e `tTrem` | – |
 | `g_sem_tx` | **semáforo binário** | – | ISR USART2 (fim da TX) dá | `tComm` espera |
 | `g_stats` | seção crítica | – | `tSeg`, `tMotor`, `tInter` | `tComm` |
+| `g_trem` | seção crítica | – | `tTrem` | `tComm` |
 
 Alocação **100% estática** (`configSUPPORT_DYNAMIC_ALLOCATION = 0`). Não há
 heap do RTOS, e o `.map` mostra exatamente o que cada objeto ocupa.
@@ -122,13 +157,13 @@ serial**. Se a fila encher, perde-se um log, nunca um prazo.
 
 | Item | Bytes |
 |---|---|
-| Pilhas das 6 tarefas (816 palavras) | 3 264 |
+| Pilhas das 7 tarefas (944 palavras) | 3 776 |
 | Pilha da idle (80 palavras) | 320 |
-| TCBs (7 × 80 B) | 560 |
+| TCBs (8 × 80 B) | 640 |
 | Controle das filas/mutex/semáforo (7 × 72 B) | 504 |
 | Buffers das filas | 256 |
-| **Total do RTOS** | **≈ 4,9 KB** de 12 KB |
-| Firmware inteiro (`arm-none-eabi-size`) | text 26 252 B, data 280 B, bss 7 360 B |
+| **Total do RTOS** | **≈ 5,4 KB** de 12 KB |
+| Firmware inteiro (`arm-none-eabi-size`) | text 28 216 B (de 32 KB), data 328 B, bss 7 952 B |
 
 A pilha livre real de cada tarefa sai no comando `stats` (linha `stk`, em
 palavras). Use esse valor para justificar o tamanho de cada pilha.
@@ -277,11 +312,12 @@ O **motor para** no próximo passo do `tMotor`, ou seja, em até **20 ms**
 | `tInter` | 80 µs | 200 ms | 0,04 % |
 | `tSinal` | 40 µs | 50 ms | 0,08 % |
 | `tPlanta` | 30 µs | 10 ms | 0,30 % |
-| `tComm` (status + snprintf) | 1 ms | 250 ms | 0,40 % |
-| **Total** | | | **≈ 1,2 %** |
+| `tTrem` (isqrt + mutex) | 60 µs | 50 ms | 0,12 % |
+| `tComm` (status 250 ms + trem 100 ms, snprintf) | 1 ms | 100 ms | 1,0 % |
+| **Total** | | | **≈ 1,9 %** |
 
-O limite de Liu & Layland para 6 tarefas é n(2^(1/n) − 1) ≈ 73,5 %. Com
-≈ 1,2 %, o conjunto é escalonável com muita folga.
+O limite de Liu & Layland para 7 tarefas é n(2^(1/n) − 1) ≈ 72,8 %. Com
+≈ 1,9 %, o conjunto é escalonável com muita folga.
 
 Resposta do `tMotor` no pior caso: R = C_motor + C_seg + bloqueio(mutex, crítico) ≈
 60 + 50 + 10 µs ≈ **0,12 ms ≪ 20 ms**. Por isso o jitter medido deve ficar
@@ -309,12 +345,17 @@ na ordem de dezenas de µs, dominado pela granularidade do tick.
 |---|---|---|
 | 1 | boot | vai de 90° para Normal, trava em ≈ 1,6 s, sinal **verde** |
 | 2 | `r` (ou botão N/R) | sinal vermelho na hora, manobra ≈ 3,1 s, trava, sinal **amarelo** |
-| 3 | ligar "Trem no AMV" e pedir `n` | `rejeitado motivo=ocupado`, nada se move |
+| 3 | ligar "Ocupar via" e pedir `n` | `rejeitado motivo=ocupado`, nada se move |
 | 4 | desligar ocupação, ligar "Obstruir agulha" com o AMV travado | `falha tipo=perda_det lat_us=…`, vermelho |
 | 5 | com obstrução, `rearme` | refaz a manobra e, sem detecção, `falha tipo=timeout apos_ms≈4500` |
 | 6 | tirar obstrução, `rearme` | trava de novo |
 | 7 | `emg` no meio de uma manobra | vermelho, motor para, `emergencia lat_us=…` |
 | 8 | `stats` | tabela de tempos + pilha livre de cada tarefa |
+| 9 | `reiniciar` (botão "Reiniciar tudo") | reset por software (`NVIC_SystemReset`): tempo e medições zerados, repete o teste 1 |
+| 10 | com o trem a 40 km/h, pedir `r` quando ele estiver longe do sinal | AMV manobra, sinal amarelo, trem entra no ramal a ≤ 30 km/h |
+| 11 | pedir `n` com o trem entre a distância de frenagem e o AMV | `rejeitado motivo=ocupado` (aproximação travada) |
+| 12 | `vel 80` e `emg` com o trem a poucos metros do sinal | frenagem de emergência; se não der para parar, `trem evento=passou_vermelho` |
+| 13 | `obs 1` com o trem se aproximando a 80 km/h | falha de detecção → vermelho → emergência; se a agulha ficar sem detecção sob o trem, `descarrilou` (`trem` recoloca) |
 
 4. Compare os valores medidos com a seção 5. Um bom jeito de mostrar isso é
    uma tabela "calculado × medido" por caminho.

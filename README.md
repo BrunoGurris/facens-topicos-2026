@@ -7,12 +7,15 @@ detectores de fim de curso, só abre o sinal com o AMV travado e leva tudo ao
 estado seguro em falha ou emergência. Tudo roda no simulador
 [Wokwi](https://wokwi.com) dentro do VS Code, sem a placa física.
 
-- **6 tarefas** com prioridades fixas e preempção, **5 filas**, **1 mutex**
+- Um **trem simulado** circula num circuito com o desvio. Ele obedece o sinal
+  (curva de frenagem), ocupa o circuito de via e pode passar o vermelho ou
+  descarrilar se o sistema falhar. A velocidade é ajustável.
+- **7 tarefas** com prioridades fixas e preempção, **5 filas**, **1 mutex**
   (herança de prioridade), **1 semáforo binário**, tudo com alocação estática.
 - Latências medidas na própria placa (timer de 1 µs) e mostradas ao lado da
   meta calculada.
-- Painel web (seção 5) com o desenho do pátio, os comandos e a tabela de
-  tempo medido × calculado.
+- Painel web (seção 5) com o circuito animado, os comandos, o campo de
+  velocidade do trem e a tabela de tempo medido × calculado.
 
 A arquitetura, os fluxogramas e os cálculos de tempo estão em
 **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**.
@@ -105,7 +108,7 @@ Ao final deve aparecer algo como:
 
 ```
    text    data     bss     dec     hex filename
-  26252     280    7360   33892    8464 build/debug/build/amv.elf
+  28216     328    7952   36496    8e90 build/debug/build/amv.elf
 ```
 
 e os arquivos `build/debug/build/amv.elf` e `amv.hex` são gerados. São eles que o Wokwi carrega.
@@ -172,8 +175,11 @@ st t=1750 est=travado cmd=N det=N sig=verde ang=4500 occ=0 obs=0 falha=nenhuma
 |---|---|
 | `n` / `normal`, `r` / `reversa`, `t` / `alternar` | pede manobra |
 | `emg` | emergência |
-| `rearme` | rearme após falha/emergência |
-| `occ 1` / `occ 0` | simula trem sobre o AMV (soma com a chave física) |
+| `rearme` | rearme após falha/emergência (continua a mesma execução) |
+| `reiniciar` | **reset completo da placa**: tempo, medições e estado voltam do zero (boot de novo) |
+| `vel <km/h>` | velocidade do trem simulado (0 a 80; `vel 0` para) |
+| `trem` | recoloca o trem nos trilhos (depois de descarrilar), parado no início da linha |
+| `occ 1` / `occ 0` | ocupa o circuito de via sem trem (soma com a chave física e com o trem) |
 | `obs 1` / `obs 0` | simula agulha obstruída |
 | `status` | linha `st` na hora |
 | `stats` | tempos medidos (`tm`) e pilha livre de cada tarefa (`stk`) |
@@ -191,16 +197,20 @@ A placa responde `ok <comando>` ou `err <motivo>`. Depois vêm os eventos
 O script `tools/painel_amv.py` conecta na serial da placa simulada e abre uma
 página no navegador com:
 
-- o **desenho do pátio**: agulha na posição real do servo, sinal aceso, detectores, trem e obstrução;
-- os botões **Normal / Reversa / Alternar / Emergência / Rearme** e os de simular trem e obstrução;
+- o **circuito animado**: linha principal oval, ramal da rota Reversa, agulha na posição real do servo,
+  sinal aceso, detectores, o trem andando e o trecho do circuito de via (vermelho quando ocupado);
+- o campo de **velocidade do trem** (0 a 80 km/h), o botão Parar e o "Recolocar trem";
+- os botões **Normal / Reversa / Alternar / Emergência / Rearme / Reiniciar tudo** e os de simular trem e obstrução.
+  "Reiniciar tudo" reseta a placa e o painel limpa o gráfico, o log e a tabela de tempos;
 - a tabela **tempo medido × tempo calculado** (latência da emergência, da
   perda de detecção, do pedido, duração da manobra e jitter do motor) com ✓ ou ✕;
-- o gráfico do ângulo da máquina de chave, colorido pelo aspecto do sinal;
+- o gráfico do ângulo da máquina de chave, colorido pelo aspecto do sinal, e o gráfico da
+  velocidade do trem, colorido pelo freio (tração / serviço / emergência);
 - o log de eventos.
 
 Como funciona: o `wokwi.toml` tem `rfc2217ServerPort = 4000`, que faz o Wokwi
 expor a USART2 num servidor TCP. O script conecta nele com `pyserial` e
-interpreta as linhas `st`/`ev`/`tm`/`stk`. Os botões fazem `POST /cmd`, e o
+interpreta as linhas `st`/`ev`/`tm`/`tr`/`stk`. Os botões fazem `POST /cmd`, e o
 script escreve o comando na serial.
 
 Só precisa do `pyserial`:
@@ -252,6 +262,7 @@ blink/
 │       ├── main.c            # init do HAL/GPIO/UART e chama amv_start()
 │       ├── amv_tasks.c       # AS TAREFAS: tSeg, tMotor, tInter, tSinal, tPlanta
 │       ├── amv_comm.c        # tComm: protocolo serial e telemetria
+│       ├── amv_trem.c        # tTrem: SIMULAÇÃO do trem (frenagem, ocupação)
 │       ├── amv_hw.c          # servo (TIM3), cronômetro 1 µs (TIM14), ISRs → filas
 │       └── stm32c0xx_it.c    # vetores de interrupção (EXTI, USART2)
 ├── Middlewares/Third_Party/FreeRTOS/   # kernel FreeRTOS V11.1.0 (MIT), port ARM_CM0

@@ -44,7 +44,30 @@
 #define PRIO_INTERTRAV         3
 #define PRIO_SINAL             2
 #define PRIO_PLANTA            2
+#define PRIO_TREM              2
 #define PRIO_COMM              1
+
+/* ======================================================================
+ * Trem simulado (tarefa tTrem, amv_trem.c) -- unidades: mm e mm/s
+ * Comprimentos na mesma escala do desenho do painel (1 px ~ 0,32 m).
+ *
+ *  circuito fechado:  ... VOLTA --[sinal]--> ZONA (AMV) --> ROTA N ou R --> VOLTA ...
+ *  a rota R e' um ramal paralelo que volta para a linha principal (juncao de mola)
+ * ====================================================================== */
+#define T_TREM_PERIODO_MS      50
+#define TREM_L_VOLTA_MM        335000u  /* linha comum (da juncao ate' o AMV)    */
+#define TREM_L_ZONA_MM         16000u   /* aparelho de mudanca de via            */
+#define TREM_L_ROTA_N_MM       86000u   /* rota normal (reta)                    */
+#define TREM_L_ROTA_R_MM       97000u   /* rota reversa (ramal desviado)         */
+#define TREM_S_SINAL_MM        (TREM_L_VOLTA_MM - 40000u)  /* sinal 40 m antes do AMV */
+#define TREM_COMPRIMENTO_MM    30000u
+#define TREM_MARGEM_MM         5000u    /* para 5 m antes do sinal vermelho      */
+#define TREM_A_ACEL            800u     /* mm/s^2 */
+#define TREM_A_SERVICO         1200u    /* frenagem normal     */
+#define TREM_A_EMERG           2500u    /* frenagem de emergencia */
+#define TREM_V_DESVIO_KMH      30u      /* limite na via desviada (sinal amarelo) */
+#define TREM_V_MAX_KMH         80u      /* acima disso a frenagem nao cabe na volta */
+#define TREM_V_INICIAL_KMH     40u
 
 /* ======================================================================
  * Tipos
@@ -109,6 +132,7 @@ typedef enum {
   LOG_FALHA,          /* a=amv_falha_t, v=latencia ate sinal vermelho (us)       */
   LOG_EMERGENCIA,     /* v=latencia botao -> sinal vermelho (us)                 */
   LOG_REARME,
+  LOG_TREM,           /* a=trem_evento_t, b=rota, v=velocidade (km/h)            */
 } log_tipo_t;
 typedef enum { REJ_OCUPADO = 0, REJ_EM_MOVIMENTO, REJ_BLOQUEADO, REJ_JA_NA_POSICAO } rej_motivo_t;
 typedef struct {
@@ -118,6 +142,20 @@ typedef struct {
   uint32_t t_ms;
   uint32_t v;
 } log_msg_t;
+
+/* Trem simulado -- escrito so' pelo tTrem, lido com taskENTER_CRITICAL */
+typedef enum { TSEG_VOLTA = 0, TSEG_ZONA, TSEG_ROTA } trem_seg_t;
+typedef enum { FREIO_NENHUM = 0, FREIO_SERVICO, FREIO_EMERGENCIA } trem_freio_t;
+typedef enum { TREM_ENTROU = 0, TREM_PASSOU_VERMELHO, TREM_DESCARRILOU, TREM_RECOLOCADO } trem_evento_t;
+typedef struct {
+  uint8_t  seg;          /* trem_seg_t: onde esta' a frente do trem          */
+  uint8_t  rota;         /* amv_pos_t: rota tomada na ultima passagem        */
+  uint8_t  freio;        /* trem_freio_t                                     */
+  uint8_t  ocupado;      /* circuito de via / aproximacao travada            */
+  uint8_t  descarrilado;
+  uint32_t s_mm;         /* posicao da frente dentro do segmento             */
+  uint32_t v_mms;        /* velocidade atual                                 */
+} trem_t;
 
 /* Estatisticas de tempo (medido x calculado) -- secao critica curta */
 typedef struct {
@@ -169,6 +207,13 @@ uint16_t    amv_stack_livre(uint8_t idx, const char **nome);
 
 /* amv_comm.c */
 void        tarefa_comm(void *arg);
+void        amv_trem_copia(trem_t *dst);
+extern volatile uint8_t g_trem_vel_kmh;       /* comando "vel <km/h>"          */
+extern volatile uint8_t g_trem_recolocar;     /* comando "trem"                */
+extern volatile uint8_t g_trem_ocupado;       /* entra em amv_hw_ocupado()     */
+
+/* amv_trem.c */
+void        tarefa_trem(void *arg);
 extern volatile uint8_t g_ocupado_virtual;    /* comandos "occ"/"obs" da serial */
 extern volatile uint8_t g_obstruido_virtual;
 

@@ -13,6 +13,8 @@
  *  tPlanta     2    periodica 10 ms             SIMULACAO dos contatos dos
  *                                               detectores (nao existe na
  *                                               placa real)
+ *  tTrem       2    periodica 50 ms             SIMULACAO do trem no circuito
+ *                                               (amv_trem.c)
  *  tComm       1    evento (g_q_log/g_q_rx)     protocolo serial / telemetria
  *
  *  Recursos: 5 filas, 1 mutex (g_mtx_amv), 1 semaforo binario (g_sem_tx).
@@ -60,6 +62,7 @@ static StaticSemaphore_t mtx_amv_ctl, sem_tx_ctl;
 #define STK_INTER   128
 #define STK_SINAL   96
 #define STK_PLANTA  96
+#define STK_TREM    128
 #define STK_COMM    256
 
 typedef struct {
@@ -87,6 +90,7 @@ static tarefa_def_t tarefas[] = {
   TAREFA(tarefa_intertravamento, "tInter",  STK_INTER,  PRIO_INTERTRAV),
   TAREFA(tarefa_sinal,           "tSinal",  STK_SINAL,  PRIO_SINAL),
   TAREFA(tarefa_planta,          "tPlanta", STK_PLANTA, PRIO_PLANTA),
+  TAREFA(tarefa_trem,            "tTrem",   STK_TREM,   PRIO_TREM),
   TAREFA(tarefa_comm,            "tComm",   STK_COMM,   PRIO_COMM),
 };
 #define N_TAREFAS (sizeof(tarefas) / sizeof(tarefas[0]))

@@ -7,8 +7,9 @@ Como funciona:
        st ...  estado do AMV a cada 250 ms (posicao, sinal, angulo do motor...)
        ev ...  eventos (pedido, travado, falha, emergencia, rearme, rejeitado)
        tm ...  tempos medidos: latencias em us e duracao das manobras em ms
+       tr ...  posicao e velocidade do trem simulado a cada 100 ms
        stk ... pilha livre de cada tarefa (resposta ao comando "stats")
-     e aceita comandos de texto na RX (n, r, t, emg, rearme, occ 1, obs 1...).
+     e aceita comandos de texto na RX (n, r, t, emg, rearme, vel 60, trem...).
   2. O Wokwi expoe a UART simulada num servidor RFC2217 (porta 4000, ver wokwi.toml).
   3. Este script le/escreve na serial via pyserial e serve uma pagina HTML em
      http://localhost:8765: os dados chegam por Server-Sent Events e os
@@ -69,7 +70,7 @@ def parse_value(v):
 def parse_line(text):
     """Transforma 'st t=10 est=travado ...' em {'kind': 'st', 't': 10, 'est': 'travado'}."""
     kind, _, rest = text.partition(" ")
-    if kind not in ("st", "ev", "tm", "stk"):
+    if kind not in ("st", "ev", "tm", "stk", "tr"):
         return None
     data = {"kind": kind}
     if kind == "ev":
@@ -84,7 +85,7 @@ def broadcast(event):
     with lock:
         if event["type"] == "st":
             history.append(event)
-        elif event["type"] in ("tm", "stk"):
+        elif event["type"] in ("tm", "stk", "tr"):
             last[event["type"]] = event
         elif event["type"] in ("ev", "log"):
             logs.append(event)
@@ -118,8 +119,16 @@ def serial_reader(url, baud):
                     now = time.monotonic()
                     if data["kind"] == "st":
                         t = data.get("t", 0)
-                        if t0 is None or (prev_t is not None and t < prev_t):
-                            t0 = now            # placa reiniciou
+                        if prev_t is not None and t < prev_t:
+                            # placa reiniciou: descarta o que era da execucao anterior
+                            with lock:
+                                history.clear()
+                                logs.clear()
+                                last.clear()
+                            broadcast({"type": "reset"})
+                            t0 = now
+                        if t0 is None:
+                            t0 = now
                         prev_t = t
                     data["type"] = data.pop("kind")
                     data["host_ms"] = round((now - (t0 or now)) * 1000)

@@ -40,6 +40,7 @@ Core/Src/main.c \
 Core/Src/amv_hw.c \
 Core/Src/amv_tasks.c \
 Core/Src/amv_comm.c \
+Core/Src/amv_trem.c \
 Core/Src/stm32c0xx_it.c \
 Core/Src/stm32c0xx_hal_msp.c \
 Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal.c \
