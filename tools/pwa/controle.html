@@ -18,15 +18,10 @@
     --border: #e4e3df;
     --text-primary: #0b0b0b;
     --text-secondary: #52514e;
-    --rail: #8a8984;
-    --rail-off: #d6d5d0;
     --accent: #2a78d6;
     --sig-red: #e34948;
     --sig-yellow: #e0a100;
     --sig-green: #008300;
-    --lamp-off: #3a3a38;
-    --occ-line: rgba(227, 73, 72, .35);
-    --train: #2a78d6;
     --ok: #008300;
     --bad: #e34948;
     --danger-bg: #e34948;
@@ -40,15 +35,10 @@
       --border: #383835;
       --text-primary: #ffffff;
       --text-secondary: #c3c2b7;
-      --rail: #9d9c95;
-      --rail-off: #4a4a47;
       --accent: #3987e5;
       --sig-red: #e66767;
       --sig-yellow: #f0b429;
       --sig-green: #3ab53a;
-      --lamp-off: #11110f;
-      --occ-line: rgba(230, 103, 103, .45);
-      --train: #3987e5;
       --ok: #3ab53a;
       --bad: #e66767;
       --danger-bg: #d13c3b;
@@ -68,12 +58,7 @@
   #badge { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
   .label { color: var(--text-secondary); font-size: 12px; }
-  svg { width: 100%; height: auto; display: block; }
-  .rail { stroke: var(--rail-off); stroke-width: 8; stroke-linecap: round; fill: none; }
-  .rail.on { stroke: var(--rail); }
-  .occ-path { fill: none; stroke: var(--occ-line); stroke-width: 22; stroke-linecap: round; }
-  .lamp { stroke: var(--border); stroke-width: 1; }
-  #aviso { color: var(--sig-yellow); font-size: 13px; min-height: 1.3em; margin: 6px 2px 0; }
+  #aviso { color: var(--sig-yellow); font-size: 13px; min-height: 1.3em; margin: 0 2px 8px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   button {
     font: inherit; font-weight: 600; color: var(--text-primary); background: var(--card);
@@ -124,26 +109,7 @@
 <div id="app">
   <button id="instalar">Instalar app na tela inicial</button>
 
-  <div class="card" style="padding:8px">
-    <svg viewBox="40 20 590 270" role="img" aria-label="Circuito com o AMV e o trem">
-      <path id="occ-a" class="occ-path" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250" visibility="hidden"/>
-      <path id="occ-b" class="occ-path" d="M 150 250 L 200 250" visibility="hidden"/>
-      <path id="p-volta" class="rail on" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
-      <path id="p-zona" class="rail on" d="M 150 250 L 200 250"/>
-      <path id="p-n" class="rail" d="M 200 250 L 470 250"/>
-      <path id="p-r" class="rail" d="M 200 250 L 240 210 L 430 210 L 470 250"/>
-      <g>
-        <line id="sig-mast" stroke="var(--rail)" stroke-width="4"/>
-        <rect id="sig-box" width="24" height="60" rx="7" fill="var(--lamp-off)"/>
-        <circle id="lamp-r" r="8" class="lamp" fill="var(--lamp-off)"/>
-        <circle id="lamp-y" r="8" class="lamp" fill="var(--lamp-off)"/>
-        <circle id="lamp-g" r="8" class="lamp" fill="var(--lamp-off)"/>
-      </g>
-      <text id="ang" x="335" y="150" text-anchor="middle" fill="var(--text-secondary)" font-size="20">–</text>
-      <polyline id="train" fill="none" stroke="var(--train)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" visibility="hidden"/>
-    </svg>
-    <div id="aviso"></div>
-  </div>
+  <div id="aviso"></div>
 
   <div class="grid2">
     <button class="big" id="b-n" data-cmd="n">Normal</button>
@@ -251,48 +217,8 @@
   vel.addEventListener("input", () => { arrastando = true; $("vel-val").textContent = `${vel.value} km/h`; });
   vel.addEventListener("change", () => { arrastando = false; send(`vel ${vel.value}`); });
 
-  // ---------- circuito (mesma geometria de tools/painel_amv.html e Core/Inc/amv.h) ----------
-  const L = { volta: 335, zona: 16, N: 86, R: 97 };
-  const S_SINAL = 295, C_TREM = 30;
-  const SEG = { volta: 0, zona: 1, rota: 2 };
-  const P = { volta: $("p-volta"), zona: $("p-zona"), N: $("p-n"), R: $("p-r") };
-  const segKey = (seg, rota) => (seg === 0 ? "volta" : seg === 1 ? "zona" : rota === "R" ? "R" : "N");
-  function pointAt(seg, s, rota) {
-    while (s < 0) { seg = (seg + 2) % 3; s += L[segKey(seg, rota)]; }
-    const k = segKey(seg, rota), path = P[k];
-    return path.getPointAtLength(Math.min(s, L[k]) / L[k] * path.getTotalLength());
-  }
-  (function posicionaSinal() {
-    const p = pointAt(0, S_SINAL, "N");
-    // no celular o sinal fica do lado de DENTRO do oval (fora, cortaria na borda)
-    const dx = 150 - p.x, dy = 150 - p.y, n = Math.hypot(dx, dy) || 1;
-    const hx = p.x + dx / n * 46, hy = p.y + dy / n * 46;
-    const set = (id, a) => Object.entries(a).forEach(([k, v]) => $(id).setAttribute(k, v));
-    set("sig-mast", { x1: p.x + dx / n * 10, y1: p.y + dy / n * 10, x2: hx, y2: hy });
-    set("sig-box", { x: hx - 12, y: hy - 30 });
-    set("lamp-r", { cx: hx, cy: hy - 18 });
-    set("lamp-y", { cx: hx, cy: hy });
-    set("lamp-g", { cx: hx, cy: hy + 18 });
-    const len = P.volta.getTotalLength(), ini = S_SINAL / L.volta * len;
-    $("occ-a").setAttribute("stroke-dasharray", `0 ${ini} ${len - ini} ${len}`);
-  })();
-
   function mostraEstado(s) {
     const col = SIG();
-    const travado = s.est === "travado";
-    for (const k of ["N", "R"]) {
-      const lit = travado && s.cmd === k;
-      P[k].classList.toggle("on", lit || s.det === k);
-      P[k].style.stroke = lit ? col[s.sig] : "";
-    }
-    $("lamp-r").setAttribute("fill", s.sig === "vermelho" ? col.vermelho : css("--lamp-off"));
-    $("lamp-y").setAttribute("fill", s.sig === "amarelo" ? col.amarelo : css("--lamp-off"));
-    $("lamp-g").setAttribute("fill", s.sig === "verde" ? col.verde : css("--lamp-off"));
-    const vis = s.occ ? "visible" : "hidden";
-    $("occ-a").setAttribute("visibility", vis);
-    $("occ-b").setAttribute("visibility", vis);
-    $("ang").textContent = `agulha ${(s.ang / 100).toFixed(0)}°`;
-
     const badge = { travado: [`TRAVADO · ${POS[s.cmd]}`, "--ok"], movendo: [`MOVENDO → ${POS[s.cmd]}`, "--sig-yellow"],
                     falha: [`FALHA: ${s.falha}`, "--bad"], emergencia: ["EMERGÊNCIA", "--bad"] }[s.est] || [s.est, "--text-secondary"];
     $("badge").textContent = badge[0];
@@ -316,10 +242,7 @@
     $("b-obs").classList.toggle("active", !!obs);
   }
 
-  // trem: posicao estimada entre amostras (chegam a cada 100 ms)
-  let trem = null;
   function mostraTrem(tr) {
-    trem = { seg: SEG[tr.seg] ?? 0, s: tr.s / 1000, v: tr.v / 1000, rota: tr.rota, desc: tr.desc, at: performance.now() };
     const kmh = tr.v * 3.6 / 1000;
     $("t-trem").textContent = tr.desc ? "descarrilou" : `${kmh.toFixed(0)} km/h`;
     $("t-trem").className = "v" + (tr.desc ? " bad" : "");
@@ -327,23 +250,6 @@
     $("t-freio").className = "v" + (tr.freio === 2 ? " bad" : tr.freio === 1 ? " warn" : "");
     if (!arrastando) { vel.value = tr.vmax; $("vel-val").textContent = `${tr.vmax} km/h`; }
   }
-  function desenhaTrem() {
-    requestAnimationFrame(desenhaTrem);
-    if (!trem) return;
-    const dt = Math.min(0.25, (performance.now() - trem.at) / 1000);
-    const k = segKey(trem.seg, trem.rota);
-    const cabeca = Math.min(trem.s + trem.v * dt, L[k]);
-    const pts = [];
-    for (let i = 0; i <= 10; i++) {
-      const p = pointAt(trem.seg, cabeca - C_TREM + C_TREM * i / 10, trem.rota);
-      pts.push(`${p.x.toFixed(1)},${p.y.toFixed(1)}`);
-    }
-    $("train").setAttribute("points", pts.join(" "));
-    $("train").style.stroke = trem.desc ? css("--bad") : css("--train");
-    $("train").setAttribute("visibility", "visible");
-  }
-  requestAnimationFrame(desenhaTrem);
-
   function addLog(ev) {
     if (ev.type !== "ev" && !(ev.text || "").startsWith("err")) return;   // so' eventos e erros
     const d = document.createElement("div");

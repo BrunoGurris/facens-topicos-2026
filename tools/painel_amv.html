@@ -15,7 +15,12 @@
     --text-primary: #0b0b0b;
     --text-secondary: #52514e;
     --rail: #8a8984;
-    --rail-off: #d6d5d0;
+    --ground: #eef1e8;
+    --ballast: #d6d2c8;
+    --embank: #b9b2a2;
+    --shadow: rgba(40, 36, 28, .38);
+    --sleeper: #8b7760;
+    --steel: #5f6369;
     --accent: #2a78d6;
     --sig-red: #e34948;
     --sig-yellow: #e0a100;
@@ -24,7 +29,9 @@
     --occ: rgba(227, 73, 72, .14);
     --occ-line: rgba(227, 73, 72, .35);
     --train: #2a78d6;
-    --train-head: #0b3d7a;
+    --train-roof: #1d5aa6;
+    --train-top: #5b9ae6;
+    --train-glass: #0b2b55;
     --ok: #008300;
     --bad: #e34948;
   }
@@ -38,7 +45,12 @@
       --text-primary: #ffffff;
       --text-secondary: #c3c2b7;
       --rail: #9d9c95;
-      --rail-off: #4a4a47;
+      --ground: #1f231d;
+      --ballast: #3e3c37;
+      --embank: #2c2a26;
+      --shadow: rgba(0, 0, 0, .7);
+      --sleeper: #7d6a55;
+      --steel: #b4b7bc;
       --accent: #3987e5;
       --sig-red: #e66767;
       --sig-yellow: #f0b429;
@@ -47,7 +59,9 @@
       --occ: rgba(230, 103, 103, .18);
       --occ-line: rgba(230, 103, 103, .45);
       --train: #3987e5;
-      --train-head: #cfe3ff;
+      --train-roof: #2a69bd;
+      --train-top: #7fb2f0;
+      --train-glass: #0d2342;
       --ok: #3ab53a;
       --bad: #e66767;
     }
@@ -78,10 +92,25 @@
   .est-falha, .est-emergencia { color: var(--bad); }
   .est-movendo { color: var(--sig-yellow); }
   svg { width: 100%; height: auto; display: block; }
-  #yard { max-width: 860px; margin: 0 auto; }
-  .rail { stroke: var(--rail-off); stroke-width: 6; stroke-linecap: round; fill: none; }
-  .rail.on { stroke: var(--rail); }
-  .leg { fill: none; stroke: transparent; stroke-width: 6; stroke-linecap: round; }
+  #yard { max-width: 860px; margin: 0 auto; transform-origin: 50% 100%; transition: transform .6s ease, margin .6s ease; }
+  /* inclinado: a borda de baixo fica parada e a de cima afunda; a margem
+     negativa devolve o espaco que sobra em cima (altura do svg = 0,47 da largura) */
+  #yard.tilt { transform: perspective(1100px) rotateX(40deg); margin-top: calc(min(100%, 860px) * -0.14); }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .terrain { opacity: .22; mix-blend-mode: multiply; }
+  .embank { fill: none; stroke: var(--embank); stroke-width: 30; stroke-linecap: round; }
+  .ground { fill: var(--ground); }
+  .geo { fill: none; stroke: none; }
+  .ballast { fill: none; stroke: var(--ballast); stroke-width: 20; stroke-linecap: round; }
+  .sleeper { fill: none; stroke: var(--sleeper); stroke-width: 2.4; }
+  .steel { fill: none; stroke: var(--steel); stroke-width: 1.6; stroke-linejoin: round; }
+  .blade { fill: none; stroke: var(--steel); stroke-width: 2; stroke-linecap: round; }
+  .route { fill: none; stroke-width: 2.5; stroke-linecap: round; visibility: hidden; }
+  .car-body { fill: url(#g-car); stroke: var(--train-roof); stroke-width: .6; }
+  .car-roof { fill: var(--train-roof); }
+  .car-glass { fill: var(--train-glass); }
+  #train.desc .car-body { fill: url(#g-car-bad); }
+  #train.desc .car-roof { fill: rgba(0, 0, 0, .25); }
   .amv-ring { fill: none; stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 3 3; }
   .ag-card { fill: var(--card); stroke: var(--border); }
   .ag-title { fill: var(--text-primary); font-size: 12px; font-weight: 600; }
@@ -139,25 +168,70 @@
 <div id="nolib">Não consegui carregar o Chart.js (tools/chart.umd.min.js), então o gráfico não vai aparecer.</div>
 
 <div class="card" style="margin-bottom:16px">
-  <h2>Pátio</h2>
+  <div class="card-head">
+    <h2>Pátio</h2>
+    <button id="b-tilt" title="Inclina o pátio em perspectiva">Vista inclinada</button>
+  </div>
   <p>O trem circula no sentido anti-horário. Pela rota Normal ele segue a linha principal; pela Reversa entra no ramal a no máximo 30 km/h. A faixa vermelha é o circuito de via, que impede mover o AMV enquanto o trem está nele.</p>
-  <svg id="yard" viewBox="0 0 660 310" role="img" aria-label="Circuito com AMV, sinal e trem">
+  <svg id="yard" viewBox="0 0 660 310" role="img" aria-label="Pátio visto de cima: via com AMV, sinal e trem">
+    <defs>
+      <!-- luz vindo de cima/esquerda: sombras caem para baixo e para a direita -->
+      <filter id="f-terrain" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="7"/>
+        <feDiffuseLighting surfaceScale="3" lighting-color="#fff">
+          <feDistantLight azimuth="225" elevation="50"/>
+        </feDiffuseLighting>
+      </filter>
+      <filter id="f-sh-low" x="-10%" y="-10%" width="120%" height="130%">
+        <feDropShadow dx="1.5" dy="2.5" stdDeviation="2" style="flood-color: var(--shadow)"/>
+      </filter>
+      <filter id="f-sh-mini" x="-10%" y="-10%" width="120%" height="130%">
+        <feDropShadow dx=".5" dy=".9" stdDeviation=".4" style="flood-color: var(--shadow)"/>
+      </filter>
+      <filter id="f-sh-high" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="3" dy="4.5" stdDeviation="2.2" style="flood-color: var(--shadow)"/>
+      </filter>
+      <!-- teto abaulado: claro no meio, escuro nas laterais (vale para qualquer sentido) -->
+      <linearGradient id="g-car" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" style="stop-color: var(--train-roof)"/>
+        <stop offset=".5" style="stop-color: var(--train-top)"/>
+        <stop offset="1" style="stop-color: var(--train-roof)"/>
+      </linearGradient>
+      <linearGradient id="g-car-bad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" style="stop-color: var(--bad); stop-opacity: .75"/>
+        <stop offset=".5" style="stop-color: var(--bad)"/>
+        <stop offset="1" style="stop-color: var(--bad); stop-opacity: .75"/>
+      </linearGradient>
+    </defs>
+    <rect width="660" height="310" rx="6" class="ground"/>
+    <rect width="660" height="310" rx="6" class="terrain" filter="url(#f-terrain)"/>
+    <!-- eixo das vias: so' geometria; lastro, dormentes e trilhos saem daqui pelo script -->
+    <path id="p-volta" class="geo" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
+    <path id="p-zona" class="geo" d="M 150 250 L 200 250"/>
+    <path id="p-n" class="geo" d="M 200 250 L 470 250"/>
+    <path id="p-r" class="geo" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
+    <g id="lay-embank" filter="url(#f-sh-low)"></g>
+    <g id="lay-ballast"></g>
     <path id="occ-a" class="occ-path" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250" visibility="hidden"/>
     <path id="occ-b" class="occ-path" d="M 150 250 L 200 250" visibility="hidden"/>
-    <path id="p-volta" class="rail on" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
-    <path id="p-zona" class="rail on" d="M 150 250 L 200 250"/>
-    <path id="p-n" class="rail" d="M 200 250 L 470 250"/>
-    <path id="p-r" class="rail" d="M 200 250 L 240 210 L 430 210 L 470 250"/>
-    <!-- AMV no circuito: saida das duas rotas + marca que liga ao detalhe -->
-    <path id="leg-n" class="leg" d="M 200 250 L 236 250"/>
-    <path id="leg-r" class="leg" d="M 200 250 L 225 225"/>
-    <circle cx="180" cy="248" r="24" class="amv-ring"/>
-    <line x1="197" y1="231" x2="225" y2="196" class="amv-ring"/>
-    <text x="180" y="292" text-anchor="middle" class="svg-label">AMV</text>
+    <g id="lay-sleepers" filter="url(#f-sh-mini)"></g>
+    <g id="lay-rails" filter="url(#f-sh-mini)"></g>
+    <!-- rota estabelecida, no eixo da via -->
+    <path id="route-n" class="route" d="M 200 250 L 470 250"/>
+    <path id="route-r" class="route" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
+    <!-- AMV no patio: agulhas, tirante e maquina de chave ao lado da via -->
+    <polyline id="yd-blade-u" class="blade"/>
+    <polyline id="yd-blade-l" class="blade"/>
+    <line x1="202" y1="252" x2="202" y2="263" class="ag-bar"/>
+    <rect x="195" y="263" width="14" height="7" rx="1.5" class="ag-machine"/>
+    <circle cx="212" cy="246" r="28" class="amv-ring"/>
+    <line x1="226" y1="222" x2="242" y2="178" class="amv-ring"/>
+    <text x="212" y="292" text-anchor="middle" class="svg-label">AMV</text>
 
-    <!-- detalhe da agulha (vista de cima), no centro do oval -->
-    <g id="ag" transform="translate(225,62)">
-      <rect width="280" height="132" rx="8" class="ag-card"/>
+    <!-- detalhe da agulha (vista de cima), no centro do oval; reduzido e
+         centrado entre o aterro da reta de cima (ate' y 65) e o do ramal (desde y 195) -->
+    <g id="ag" transform="translate(234,82.5) scale(.72)">
+      <rect width="280" height="132" rx="8" class="ag-card" filter="url(#f-sh-high)"/>
       <text x="12" y="18" class="ag-title">Detalhe da agulha</text>
       <text id="ag-badge" x="268" y="18" text-anchor="end" class="ag-badge">–</text>
       <text id="ag-pend" x="268" y="34" text-anchor="end" class="svg-label ag-pend"></text>
@@ -190,16 +264,15 @@
     <text x="470" y="276" text-anchor="middle" class="svg-label">junção de mola</text>
     <text x="335" y="40" text-anchor="middle" class="svg-label">← sentido do trem</text>
     <!-- sinal de protecao (posicionado pelo script, 40 m antes do AMV) -->
-    <g id="sig">
+    <g id="sig" filter="url(#f-sh-high)">
       <line id="sig-mast" stroke="var(--rail)" stroke-width="3"/>
       <rect id="sig-box" width="18" height="46" rx="5" fill="var(--lamp-off)"/>
       <circle id="lamp-r" r="6" class="lamp" fill="var(--lamp-off)"/>
       <circle id="lamp-y" r="6" class="lamp" fill="var(--lamp-off)"/>
       <circle id="lamp-g" r="6" class="lamp" fill="var(--lamp-off)"/>
     </g>
-    <!-- trem -->
-    <polyline id="train" fill="none" stroke="var(--train)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" visibility="hidden"/>
-    <circle id="train-head" r="6" fill="var(--train-head)" visibility="hidden"/>
+    <!-- trem: locomotiva + 2 carros, montados pelo script -->
+    <g id="train" visibility="hidden" filter="url(#f-sh-high)"></g>
     <text id="train-label" class="svg-label train-label" text-anchor="middle" visibility="hidden"></text>
   </svg>
 </div>
@@ -390,6 +463,60 @@
     return path.getPointAtLength(Math.min(s, L[k]) / L[k] * path.getTotalLength());
   }
 
+  // ---------- via vista de cima ----------
+  // Bitola, dormentes e agulhas em px (1 px ~ 0,32 m). A normal aponta para a
+  // direita do sentido de marcha: na reta de baixo (indo para a direita) e' +y.
+  const NS = "http://www.w3.org/2000/svg";
+  const GAUGE = 6, SLEEPER = 14, SLEEPER_STEP = 5, BLADE = 24, BLADE_GAP = 2.5;
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function sample(path, a, b, step) {
+    const len = path.getTotalLength(), n = Math.max(1, Math.ceil((b - a) / step)), out = [];
+    for (let i = 0; i <= n; i++) {
+      const d = a + (b - a) * i / n;
+      const p = path.getPointAtLength(d);
+      const p0 = path.getPointAtLength(Math.max(0, d - 0.5)), p1 = path.getPointAtLength(Math.min(len, d + 0.5));
+      const tx = p1.x - p0.x, ty = p1.y - p0.y, m = Math.hypot(tx, ty) || 1;
+      out.push({ x: p.x, y: p.y, nx: -ty / m, ny: tx / m, d });
+    }
+    return out;
+  }
+  const offset = (pts, off, shift = () => 0) => pts.map((p) => {
+    const o = off + shift(p);
+    return `${(p.x + p.nx * o).toFixed(2)},${(p.y + p.ny * o).toFixed(2)}`;
+  }).join(" ");
+
+  (function buildTrack() {
+    for (const k of ["volta", "zona", "N", "R"]) {
+      const path = P[k], len = path.getTotalLength();
+      el("path", { d: path.getAttribute("d"), class: "embank" }, $("lay-embank"));
+      el("path", { d: path.getAttribute("d"), class: "ballast" }, $("lay-ballast"));
+      const sl = sample(path, SLEEPER_STEP / 2, len - SLEEPER_STEP / 2, SLEEPER_STEP)
+        .map((p) => `M${(p.x - p.nx * SLEEPER / 2).toFixed(2)} ${(p.y - p.ny * SLEEPER / 2).toFixed(2)}` +
+                    `L${(p.x + p.nx * SLEEPER / 2).toFixed(2)} ${(p.y + p.ny * SLEEPER / 2).toFixed(2)}`);
+      el("path", { d: sl.join(""), class: "sleeper" }, $("lay-sleepers"));
+      for (const side of [-1, 1]) {
+        // no AMV os trilhos de dentro (N em cima, R embaixo) comecam no fim das agulhas
+        const ini = (k === "N" && side < 0) || (k === "R" && side > 0) ? BLADE : 0;
+        el("polyline", { points: offset(sample(path, ini, len, 2), side * GAUGE / 2), class: "steel" }, $("lay-rails"));
+      }
+    }
+  })();
+
+  // agulhas do patio: ponta no inicio do AMV, calcanhar fixo em BLADE px.
+  // A de cima fecha a rota Normal; a de baixo, a Reversa.
+  const BLADE_N = sample(P.N, 0, BLADE, 2), BLADE_R = sample(P.R, 0, BLADE, 2);
+  function drawBlades(frac, cor) {
+    const abre = (f, dir) => (p) => dir * BLADE_GAP * (1 - p.d / BLADE) * f;
+    $("yd-blade-u").setAttribute("points", offset(BLADE_N, -GAUGE / 2, abre(frac, 1)));
+    $("yd-blade-l").setAttribute("points", offset(BLADE_R, GAUGE / 2, abre(1 - frac, -1)));
+    for (const id of ["yd-blade-u", "yd-blade-l"]) $(id).style.stroke = cor;
+  }
+
   // sinal: 40 m antes do AMV, afastado para fora do oval (centro do arco esquerdo em 150,150)
   (function placeSignal() {
     const p = pointAt(0, S_SINAL, "N");
@@ -419,14 +546,12 @@
     const col = SIG_COLOR();
     const locked = s.est === "travado";
 
-    // circuito: rotas e trecho de saida do AMV
+    // rota: cor do sinal com o AMV travado, tracejada em amarelo enquanto manobra
     for (const k of ["N", "R"]) {
-      const lit = locked && s.cmd === k;
-      P[k].classList.toggle("on", lit || s.det === k);
-      P[k].style.stroke = lit ? col[s.sig] : "";
-      const leg = $(k === "N" ? "leg-n" : "leg-r");
-      leg.style.stroke = lit ? col[s.sig] : s.cmd === k ? css("--sig-yellow") : "transparent";
-      leg.style.strokeDasharray = lit ? "" : "4 3";
+      const lit = locked && s.cmd === k, route = $(k === "N" ? "route-n" : "route-r");
+      route.style.visibility = lit || s.cmd === k ? "visible" : "hidden";
+      route.style.stroke = lit ? col[s.sig] : css("--sig-yellow");
+      route.style.strokeDasharray = lit ? "" : "5 4";
     }
 
     // detalhe: pontas das agulhas. N: agulha de baixo encostada (y 92),
@@ -446,6 +571,7 @@
     const bladeCol = s.est === "falha" || s.est === "emergencia" ? css("--bad")
                    : locked ? css("--text-primary") : css("--sig-yellow");
     for (const id of ["ag-blade-u", "ag-blade-l"]) $(id).style.stroke = bladeCol;
+    drawBlades(frac, locked ? css("--steel") : bladeCol);
 
     $("lamp-r").setAttribute("fill", s.sig === "vermelho" ? col.vermelho : css("--lamp-off"));
     $("lamp-y").setAttribute("fill", s.sig === "amarelo" ? col.amarelo : css("--lamp-off"));
@@ -479,27 +605,43 @@
     }
   }
 
+  // locomotiva de 11 m + dois carros de 9 m, com 0,5 m entre eles (= C_TREM).
+  // Cada veiculo e' um retangulo entre os pontos da frente e de tras na via,
+  // entao ele acompanha as curvas e o desvio.
+  const PX_M = P.volta.getTotalLength() / L.volta, VAO = 0.5, LARG = 9;
+  const carros = [11, 9, 9].map((m, i) => {
+    const g = el("g", {}, $("train")), l = m * PX_M;
+    el("rect", { x: -l / 2, y: -LARG / 2, width: l, height: LARG, rx: 2, class: "car-body" }, g);
+    el("rect", { x: -l / 2 + 2, y: -1.5, width: l - (i ? 4 : 9), height: 3, rx: 1, class: "car-roof" }, g);
+    if (!i) el("rect", { x: l / 2 - 4, y: -LARG / 2 + 1, width: 2.5, height: LARG - 2, rx: 0.8, class: "car-glass" }, g);
+    return { g, m };
+  });
+  const TOMBO = [16, -24, 12];                           // graus de cada veiculo fora da via
+
   function drawTrain() {
     requestAnimationFrame(drawTrain);
     if (!trem) return;
     const dt = Math.min(0.25, (performance.now() - trem.at) / 1000);
     const k = segKey(trem.seg, trem.rota);
     const head = Math.min(trem.s + trem.v * dt, L[k]);
-    const pts = [];
-    for (let i = 0; i <= 12; i++) {
-      const p = pointAt(trem.seg, head - C_TREM + C_TREM * i / 12, trem.rota);
-      pts.push(`${p.x.toFixed(1)},${p.y.toFixed(1)}`);
-    }
+    let frente = head;
+    carros.forEach((c, i) => {
+      const a = pointAt(trem.seg, frente, trem.rota), b = pointAt(trem.seg, frente - c.m, trem.rota);
+      let x = (a.x + b.x) / 2, y = (a.y + b.y) / 2, ang = Math.atan2(a.y - b.y, a.x - b.x);
+      if (trem.desc) {
+        const lado = i % 2 ? -5 : 5;
+        x -= Math.sin(ang) * lado; y += Math.cos(ang) * lado;
+        ang += TOMBO[i] * Math.PI / 180;
+      }
+      c.g.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(ang * 180 / Math.PI).toFixed(1)})`);
+      frente -= c.m + VAO;
+    });
     const hp = pointAt(trem.seg, head, trem.rota);
-    const color = trem.desc ? css("--bad") : css("--train");
-    $("train").setAttribute("points", pts.join(" "));
-    $("train").style.stroke = color;
-    $("train-head").setAttribute("cx", hp.x);
-    $("train-head").setAttribute("cy", hp.y);
+    $("train").classList.toggle("desc", !!trem.desc);
     $("train-label").setAttribute("x", hp.x);
-    $("train-label").setAttribute("y", hp.y - 12);
+    $("train-label").setAttribute("y", hp.y - 14);
     $("train-label").textContent = trem.desc ? "DESCARRILOU" : `${(trem.v * 3.6).toFixed(0)} km/h`;
-    for (const id of ["train", "train-head", "train-label"]) $(id).setAttribute("visibility", "visible");
+    for (const id of ["train", "train-label"]) $(id).setAttribute("visibility", "visible");
   }
   requestAnimationFrame(drawTrain);
 
@@ -590,6 +732,13 @@
   $("b-reboot").addEventListener("click", () => {
     if (confirm("Reiniciar a placa? O tempo, as medições e o estado voltam do zero.")) send("reiniciar");
   });
+  const setTilt = (on) => {
+    $("yard").classList.toggle("tilt", on);
+    $("b-tilt").classList.toggle("active", on);
+    try { localStorage.setItem("amv-tilt", on ? "1" : ""); } catch (e) {}
+  };
+  try { setTilt(localStorage.getItem("amv-tilt") === "1"); } catch (e) {}
+  $("b-tilt").addEventListener("click", () => setTilt(!$("yard").classList.contains("tilt")));
   const sendFree = () => { const c = $("cmd").value.trim(); if (c) { send(c); $("cmd").value = ""; } };
   $("b-cmd").addEventListener("click", sendFree);
   $("cmd").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFree(); });
@@ -620,7 +769,7 @@
       redraw();
     } else if (ev.type === "status") {
       $("status").className = ev.connected ? "on" : "";
-      document.querySelectorAll("button").forEach((b) => (b.disabled = !ev.connected));
+      document.querySelectorAll("button:not(#b-tilt)").forEach((b) => (b.disabled = !ev.connected));
       $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
                                              : "sem conexão com o Wokwi (inicie o simulador)";
     }

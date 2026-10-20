@@ -201,8 +201,12 @@ borda tracejada e a mensagem "Pedido para … em espera".
 O script `tools/painel_amv.py` conecta na serial da placa simulada e abre uma
 página no navegador com:
 
-- o **circuito animado**: linha principal oval, ramal da rota Reversa, sinal aceso, o trem andando e o
-  trecho do circuito de via (vermelho quando ocupado);
+- o **pátio visto de cima**: lastro, dormentes e trilhos da linha principal oval e do ramal da
+  rota Reversa, as agulhas do AMV mudando de posição na própria via, a rota estabelecida (na cor do
+  sinal quando travado, tracejada em amarelo durante a manobra), o sinal aceso, o trem (locomotiva e
+  dois carros que fazem as curvas, tombados se descarrilar) e o trecho do circuito de via (vermelho
+  quando ocupado). Tem relevo (aterro, sombras, terreno) e o botão **Vista inclinada** deita o
+  pátio em perspectiva;
 - o **detalhe da agulha** (vista de cima, no centro do oval): trilhos de encosto, as duas agulhas
   móveis seguindo o ângulo real do servo, tirante, máquina de chave, detectores N/R, estado
   (TRAVADO / MOVENDO / FALHA / EMERGÊNCIA) e o pedido em espera;
@@ -249,7 +253,7 @@ O Chart.js está incluído em `tools/chart.umd.min.js`, então tudo funciona off
 
 Em `/m` existe uma versão para celular que pode ser **instalada como app**
 (PWA). Ela tem botões grandes (Normal, Reversa, Emergência, Rearme), um slider
-de velocidade do trem, o mini-mapa do circuito com o trem andando, o estado do
+de velocidade do trem, o estado do trem e do
 AMV, o pedido em espera e os últimos eventos. Os botões de simulação (ocupar
 via, obstruir, recolocar trem, reiniciar) ficam na seção recolhível "Simulação".
 
