@@ -19,6 +19,8 @@
     --ballast: #d6d2c8;
     --embank: #b9b2a2;
     --shadow: rgba(40, 36, 28, .38);
+    --float-shadow: rgba(30, 30, 25, .18);
+    --drawer-w: 460px;
     --sleeper: #8b7760;
     --steel: #5f6369;
     --accent: #2a78d6;
@@ -49,6 +51,7 @@
       --ballast: #3e3c37;
       --embank: #2c2a26;
       --shadow: rgba(0, 0, 0, .7);
+      --float-shadow: rgba(0, 0, 0, .55);
       --sleeper: #7d6a55;
       --steel: #b4b7bc;
       --accent: #3987e5;
@@ -67,22 +70,106 @@
     }
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 16px;
-    background: var(--surface); color: var(--text-primary);
+    margin: 0; overflow: hidden;
+    background: var(--ground); color: var(--text-primary);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-  h1 { font-size: 18px; margin: 0; }
+  /* patio na tela toda; o resto flutua por cima ou fica na gaveta lateral */
+  #stage { position: fixed; inset: 0; overflow: hidden; transition: right .3s ease; }
+  #world { position: absolute; inset: 64px 144px 112px; transform-origin: 50% 60%; transition: transform .6s ease; }
+  #world.tilt { transform: perspective(1400px) rotateX(38deg); }
+  #terrain { position: absolute; inset: -60%; width: 220%; height: 220%; will-change: transform; }
+  #yard { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .float { position: fixed; top: 12px; z-index: 5; display: flex; gap: 10px; align-items: center;
+           background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px 12px;
+           box-shadow: 0 4px 18px var(--float-shadow); transition: right .3s ease; }
+  .float.left { left: 16px; }
+  .float.right { right: 16px; padding: 6px; }
+  h1 { font-size: 15px; margin: 0; }
+  #dock { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 5;
+          display: flex; flex-direction: column; align-items: center; gap: 8px;
+          width: max-content; max-width: calc(100vw - 32px); transition: left .3s ease; }
+  .dock-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+              background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 8px 10px;
+              box-shadow: 0 6px 24px var(--float-shadow); }
+  .seg { display: flex; gap: 6px; align-items: center; }
+  .seg + .seg { border-left: 1px solid var(--border); padding-left: 10px; }
+  .dock-bar button { padding: 8px 14px; font-weight: 600; }
+  .dock-label { color: var(--text-secondary); font-size: 12px; }
+  #dock-msg { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #dock-msg > div { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px;
+                    box-shadow: 0 4px 18px var(--float-shadow); max-width: 520px; text-align: center; }
+  #dock-msg > div:empty { display: none; }
+  /* alavanca de velocidade (termometro): mercurio = velocidade real, manopla = limite pedido */
+  #lever { position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 5; width: 118px;
+           display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 8px 10px;
+           background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+           box-shadow: 0 6px 24px var(--float-shadow); transition: right .3s ease; user-select: none; }
+  #lever.off { opacity: .55; }
+  #lever.off #lv-track { cursor: default; }
+  .lever-title { color: var(--text-secondary); font-size: 12px; }
+  .lever-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .lever-val .unit { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
+  #lv-track { position: relative; width: 102px; height: 240px; margin: 10px 0 26px; cursor: ns-resize; touch-action: none; outline: none; }
+  #lv-track:focus-visible #lv-knob { box-shadow: 0 0 0 3px var(--accent); }
+  .lv-tube { position: absolute; left: 46px; top: 0; bottom: 0; width: 14px; border-radius: 7px; overflow: hidden;
+             background: var(--grid); border: 1px solid var(--border); }
+  #lv-fill, #lv-bulb { background: var(--train); transition: height .15s linear, background-color .2s; }
+  #lv-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+  #lv-bulb { position: absolute; left: 39px; bottom: -22px; width: 28px; height: 28px; border-radius: 50%;
+             border: 1px solid var(--border); }
+  .lv-tick { position: absolute; left: 66px; transform: translateY(50%); font-size: 11px; color: var(--text-secondary);
+             font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 4px; }
+  .lv-tick::before { content: ""; width: 6px; height: 1px; background: var(--text-secondary); }
+  #lv-knob { position: absolute; left: 34px; width: 38px; height: 14px; bottom: -7px; border-radius: 5px;
+             background: var(--card); border: 2px solid var(--accent); box-shadow: 0 2px 6px var(--float-shadow);
+             cursor: grab; transition: bottom .12s ease; }
+  #lv-knob::after { content: ""; position: absolute; left: 8px; right: 8px; top: 4px; height: 2px;
+                    border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); opacity: .6; }
+  /* velocidade real: etiqueta a esquerda do tubo, com seta apontando o topo do
+     mercurio; fica fora da faixa da manopla para nao ser coberta por ela */
+  #lv-real { position: absolute; right: calc(100% - 31px); bottom: 0; transform: translateY(50%); z-index: 1;
+             min-width: 24px; padding: 1px 4px; border-radius: 4px; text-align: center;
+             background: var(--real-cor, var(--train)); color: #fff;
+             font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+             transition: bottom .15s linear, background-color .2s; }
+  #lv-real::after { content: ""; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+                    border: 5px solid transparent; border-left-color: var(--real-cor, var(--train)); border-right: 0; }
+  #lv-track.drag #lv-knob { cursor: grabbing; transition: none; }
+  .lever-stop { width: 100%; font-weight: 600; }
+  #drawer { position: fixed; top: 0; right: 0; bottom: 0; width: var(--drawer-w); max-width: 100vw; z-index: 10;
+            display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border);
+            box-shadow: -8px 0 28px var(--float-shadow); transform: translateX(105%); transition: transform .3s ease;
+            visibility: hidden; }
+  body.drawer-open #drawer { transform: none; visibility: visible; }
+  .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+                 padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .drawer-head h2 { font-size: 15px; margin: 0; }
+  .drawer-body { overflow-y: auto; padding: 16px; display: grid; gap: 16px; align-content: start; }
+  /* celular: so' a bolinha de status e a barra sem divisorias quando quebra */
+  @media (max-width: 600px) {
+    #status { font-size: 0; }
+    #status::before { font-size: 14px; margin: 0; }
+    .seg + .seg { border-left: none; padding-left: 0; }
+    #world { inset: 64px 114px 150px 8px; }
+    #lever { right: 8px; width: 104px; padding: 8px 1px; }
+    #lv-track { height: 150px; }
+    .lever-val { font-size: 18px; }
+  }
+  /* tela larga: o patio encolhe para a gaveta nao cobrir o trem */
+  @media (min-width: 1000px) {
+    body.drawer-open #stage { right: var(--drawer-w); }
+    body.drawer-open .float.right, body.drawer-open #lever { right: calc(var(--drawer-w) + 16px); }
+    body.drawer-open #dock { left: calc((100vw - var(--drawer-w)) / 2); }
+  }
   #status { color: var(--text-secondary); }
   #status::before { content: "●"; margin-right: 6px; color: var(--bad); }
   #status.on::before { color: var(--ok); }
-  .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; margin-bottom: 16px; }
-  @media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
   .card h2 { font-size: 14px; font-weight: 600; margin: 0 0 2px; }
   .card p { margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; }
-  .stack { display: grid; gap: 16px; align-content: start; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; align-content: start; }
   .tile { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
   .tile .label { color: var(--text-secondary); font-size: 12px; }
@@ -91,12 +178,6 @@
   .est-travado { color: var(--ok); }
   .est-falha, .est-emergencia { color: var(--bad); }
   .est-movendo { color: var(--sig-yellow); }
-  svg { width: 100%; height: auto; display: block; }
-  #yard { max-width: 860px; margin: 0 auto; transform-origin: 50% 100%; transition: transform .6s ease, margin .6s ease; }
-  /* inclinado: a borda de baixo fica parada e a de cima afunda; a margem
-     negativa devolve o espaco que sobra em cima (altura do svg = 0,47 da largura) */
-  #yard.tilt { transform: perspective(1100px) rotateX(40deg); margin-top: calc(min(100%, 860px) * -0.14); }
-  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .terrain { opacity: .22; mix-blend-mode: multiply; }
   .embank { fill: none; stroke: var(--embank); stroke-width: 30; stroke-linecap: round; }
   .ground { fill: var(--ground); }
@@ -123,14 +204,14 @@
   .ag-machine { fill: var(--lamp-off); stroke: var(--border); }
   .ag-obs { fill: var(--bad); font-size: 11px; font-weight: 700; }
   button.pending { border-style: dashed; border-color: var(--sig-yellow); }
-  .hint { color: var(--sig-yellow); font-size: 12px; min-height: 1.2em; max-width: 280px; }
+  .hint { color: var(--sig-yellow); font-size: 12px; }
   .svg-label { fill: var(--text-secondary); font-size: 12px; }
   .lamp { stroke: var(--border); stroke-width: 1; }
   .plot { position: relative; height: 200px; }
   #log { max-height: 220px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); white-space: pre; }
   #log .ev { color: var(--text-primary); }
   #log .bad { color: var(--bad); }
-  #nolib { display: none; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; margin-bottom: 16px; }
+  #nolib { display: none; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; }
   .controls { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-end; }
   .group { display: flex; flex-direction: column; gap: 6px; }
   .group .label { color: var(--text-secondary); font-size: 12px; }
@@ -148,7 +229,7 @@
   button.danger { border-color: var(--bad); color: var(--bad); font-weight: 600; }
   input[type=text] { width: 180px; }
   input[type=number] { width: 80px; }
-  #cmd-msg { color: var(--bad); font-size: 12px; min-height: 1.2em; }
+  #cmd-msg { color: var(--bad); font-size: 12px; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); }
   th:first-child, td:first-child { text-align: left; }
@@ -160,125 +241,166 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>Painel do AMV: controle de desvio ferroviário (FreeRTOS)</h1>
-  <span id="status">aguardando o Wokwi…</span>
-</header>
-
-<div id="nolib">Não consegui carregar o Chart.js (tools/chart.umd.min.js), então o gráfico não vai aparecer.</div>
-
-<div class="card" style="margin-bottom:16px">
-  <div class="card-head">
-    <h2>Pátio</h2>
-    <button id="b-tilt" title="Inclina o pátio em perspectiva">Vista inclinada</button>
-  </div>
-  <p>O trem circula no sentido anti-horário. Pela rota Normal ele segue a linha principal; pela Reversa entra no ramal a no máximo 30 km/h. A faixa vermelha é o circuito de via, que impede mover o AMV enquanto o trem está nele.</p>
-  <svg id="yard" viewBox="0 0 660 310" role="img" aria-label="Pátio visto de cima: via com AMV, sinal e trem">
-    <defs>
-      <!-- luz vindo de cima/esquerda: sombras caem para baixo e para a direita -->
+<div id="stage">
+  <div id="world">
+    <svg id="terrain" aria-hidden="true">
+      <defs>
       <filter id="f-terrain" x="0" y="0" width="100%" height="100%">
         <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="7"/>
         <feDiffuseLighting surfaceScale="3" lighting-color="#fff">
           <feDistantLight azimuth="225" elevation="50"/>
         </feDiffuseLighting>
       </filter>
-      <filter id="f-sh-low" x="-10%" y="-10%" width="120%" height="130%">
-        <feDropShadow dx="1.5" dy="2.5" stdDeviation="2" style="flood-color: var(--shadow)"/>
-      </filter>
-      <filter id="f-sh-mini" x="-10%" y="-10%" width="120%" height="130%">
-        <feDropShadow dx=".5" dy=".9" stdDeviation=".4" style="flood-color: var(--shadow)"/>
-      </filter>
-      <filter id="f-sh-high" x="-30%" y="-30%" width="160%" height="160%">
-        <feDropShadow dx="3" dy="4.5" stdDeviation="2.2" style="flood-color: var(--shadow)"/>
-      </filter>
-      <!-- teto abaulado: claro no meio, escuro nas laterais (vale para qualquer sentido) -->
-      <linearGradient id="g-car" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" style="stop-color: var(--train-roof)"/>
-        <stop offset=".5" style="stop-color: var(--train-top)"/>
-        <stop offset="1" style="stop-color: var(--train-roof)"/>
-      </linearGradient>
-      <linearGradient id="g-car-bad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" style="stop-color: var(--bad); stop-opacity: .75"/>
-        <stop offset=".5" style="stop-color: var(--bad)"/>
-        <stop offset="1" style="stop-color: var(--bad); stop-opacity: .75"/>
-      </linearGradient>
-    </defs>
-    <rect width="660" height="310" rx="6" class="ground"/>
-    <rect width="660" height="310" rx="6" class="terrain" filter="url(#f-terrain)"/>
-    <!-- eixo das vias: so' geometria; lastro, dormentes e trilhos saem daqui pelo script -->
-    <path id="p-volta" class="geo" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
-    <path id="p-zona" class="geo" d="M 150 250 L 200 250"/>
-    <path id="p-n" class="geo" d="M 200 250 L 470 250"/>
-    <path id="p-r" class="geo" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
-    <g id="lay-embank" filter="url(#f-sh-low)"></g>
-    <g id="lay-ballast"></g>
-    <path id="occ-a" class="occ-path" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250" visibility="hidden"/>
-    <path id="occ-b" class="occ-path" d="M 150 250 L 200 250" visibility="hidden"/>
-    <g id="lay-sleepers" filter="url(#f-sh-mini)"></g>
-    <g id="lay-rails" filter="url(#f-sh-mini)"></g>
-    <!-- rota estabelecida, no eixo da via -->
-    <path id="route-n" class="route" d="M 200 250 L 470 250"/>
-    <path id="route-r" class="route" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
-    <!-- AMV no patio: agulhas, tirante e maquina de chave ao lado da via -->
-    <polyline id="yd-blade-u" class="blade"/>
-    <polyline id="yd-blade-l" class="blade"/>
-    <line x1="202" y1="252" x2="202" y2="263" class="ag-bar"/>
-    <rect x="195" y="263" width="14" height="7" rx="1.5" class="ag-machine"/>
-    <circle cx="212" cy="246" r="28" class="amv-ring"/>
-    <line x1="226" y1="222" x2="242" y2="178" class="amv-ring"/>
-    <text x="212" y="292" text-anchor="middle" class="svg-label">AMV</text>
+      </defs>
+      <rect width="100%" height="100%" class="ground"/>
+      <rect width="100%" height="100%" class="terrain" filter="url(#f-terrain)"/>
+    </svg>
+    <svg id="yard" viewBox="0 0 660 310" role="img" aria-label="Pátio visto de cima: via com AMV, sinal e trem">
+      <defs>
+        <!-- luz vindo de cima/esquerda: sombras caem para baixo e para a direita -->
+        <filter id="f-sh-low" x="-10%" y="-10%" width="120%" height="130%">
+          <feDropShadow dx="1.5" dy="2.5" stdDeviation="2" style="flood-color: var(--shadow)"/>
+        </filter>
+        <filter id="f-sh-mini" x="-10%" y="-10%" width="120%" height="130%">
+          <feDropShadow dx=".5" dy=".9" stdDeviation=".4" style="flood-color: var(--shadow)"/>
+        </filter>
+        <filter id="f-sh-high" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="3" dy="4.5" stdDeviation="2.2" style="flood-color: var(--shadow)"/>
+        </filter>
+        <!-- teto abaulado: claro no meio, escuro nas laterais (vale para qualquer sentido) -->
+        <linearGradient id="g-car" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color: var(--train-roof)"/>
+          <stop offset=".5" style="stop-color: var(--train-top)"/>
+          <stop offset="1" style="stop-color: var(--train-roof)"/>
+        </linearGradient>
+        <linearGradient id="g-car-bad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color: var(--bad); stop-opacity: .75"/>
+          <stop offset=".5" style="stop-color: var(--bad)"/>
+          <stop offset="1" style="stop-color: var(--bad); stop-opacity: .75"/>
+        </linearGradient>
+      </defs>
+      <!-- eixo das vias: so' geometria; lastro, dormentes e trilhos saem daqui pelo script -->
+      <path id="p-volta" class="geo" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250"/>
+      <path id="p-zona" class="geo" d="M 150 250 L 200 250"/>
+      <path id="p-n" class="geo" d="M 200 250 L 470 250"/>
+      <path id="p-r" class="geo" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
+      <g id="lay-embank" filter="url(#f-sh-low)"></g>
+      <g id="lay-ballast"></g>
+      <path id="occ-a" class="occ-path" d="M 470 250 L 520 250 A 100 100 0 0 0 520 50 L 150 50 A 100 100 0 0 0 150 250" visibility="hidden"/>
+      <path id="occ-b" class="occ-path" d="M 150 250 L 200 250" visibility="hidden"/>
+      <g id="lay-sleepers" filter="url(#f-sh-mini)"></g>
+      <g id="lay-rails" filter="url(#f-sh-mini)"></g>
+      <!-- rota estabelecida, no eixo da via -->
+      <path id="route-n" class="route" d="M 200 250 L 470 250"/>
+      <path id="route-r" class="route" d="M 200 250 C 225 250 225 210 250 210 L 420 210 C 445 210 445 250 470 250"/>
+      <!-- AMV no patio: agulhas, tirante e maquina de chave ao lado da via -->
+      <polyline id="yd-blade-u" class="blade"/>
+      <polyline id="yd-blade-l" class="blade"/>
+      <line x1="202" y1="252" x2="202" y2="263" class="ag-bar"/>
+      <rect x="195" y="263" width="14" height="7" rx="1.5" class="ag-machine"/>
+      <circle cx="212" cy="246" r="28" class="amv-ring"/>
+      <line x1="226" y1="222" x2="242" y2="178" class="amv-ring"/>
+      <text x="212" y="292" text-anchor="middle" class="svg-label">AMV</text>
 
-    <!-- detalhe da agulha (vista de cima), no centro do oval; reduzido e
-         centrado entre o aterro da reta de cima (ate' y 65) e o do ramal (desde y 195) -->
-    <g id="ag" transform="translate(234,82.5) scale(.72)">
-      <rect width="280" height="132" rx="8" class="ag-card" filter="url(#f-sh-high)"/>
-      <text x="12" y="18" class="ag-title">Detalhe da agulha</text>
-      <text id="ag-badge" x="268" y="18" text-anchor="end" class="ag-badge">–</text>
-      <text id="ag-pend" x="268" y="34" text-anchor="end" class="svg-label ag-pend"></text>
-      <!-- trilhos fixos (encosto) da via reta e da desviada -->
-      <line x1="66" y1="62" x2="270" y2="62" class="ag-stock"/>
-      <line x1="66" y1="92" x2="270" y2="92" class="ag-stock"/>
-      <line x1="150" y1="62" x2="270" y2="36" class="ag-stock"/>
-      <line x1="196" y1="84" x2="270" y2="66" class="ag-stock"/>
-      <text x="266" y="81" text-anchor="end" class="svg-label">Normal</text>
-      <text x="266" y="50" text-anchor="end" class="svg-label" transform="rotate(-11 266 50)">Reversa</text>
-      <!-- agulhas moveis: pontas em x=80, calcanhar fixo em x=160 -->
-      <line id="ag-blade-u" x1="80" y1="70" x2="160" y2="65" class="ag-blade"/>
-      <line id="ag-blade-l" x1="80" y1="92" x2="160" y2="89" class="ag-blade"/>
-      <circle cx="160" cy="65" r="2.5" class="ag-heel"/>
-      <circle cx="160" cy="89" r="2.5" class="ag-heel"/>
-      <!-- tirante + haste da maquina de chave -->
-      <line id="ag-bar" x1="84" y1="70" x2="84" y2="92" class="ag-bar"/>
-      <line id="ag-rod" x1="84" y1="110" x2="84" y2="92" class="ag-bar"/>
-      <rect x="64" y="110" width="40" height="14" rx="3" class="ag-machine"/>
-      <text id="ag-ang" x="112" y="121" class="svg-label">máquina de chave –</text>
-      <!-- detectores de fim de curso (contato da ponta com o trilho) -->
-      <circle id="det-r" cx="54" cy="56" r="5" class="lamp" fill="var(--lamp-off)"/>
-      <text x="45" y="60" text-anchor="end" class="svg-label">Det R</text>
-      <circle id="det-n" cx="54" cy="98" r="5" class="lamp" fill="var(--lamp-off)"/>
-      <text x="45" y="102" text-anchor="end" class="svg-label">Det N</text>
-      <text id="obs-mark" x="88" y="66" class="ag-obs" visibility="hidden">✕ obstrução</text>
-    </g>
-    <text x="335" y="276" text-anchor="middle" class="svg-label">Normal (linha principal)</text>
-    <text x="335" y="234" text-anchor="middle" class="svg-label">Reversa (ramal, 30 km/h)</text>
-    <text x="470" y="276" text-anchor="middle" class="svg-label">junção de mola</text>
-    <text x="335" y="40" text-anchor="middle" class="svg-label">← sentido do trem</text>
-    <!-- sinal de protecao (posicionado pelo script, 40 m antes do AMV) -->
-    <g id="sig" filter="url(#f-sh-high)">
-      <line id="sig-mast" stroke="var(--rail)" stroke-width="3"/>
-      <rect id="sig-box" width="18" height="46" rx="5" fill="var(--lamp-off)"/>
-      <circle id="lamp-r" r="6" class="lamp" fill="var(--lamp-off)"/>
-      <circle id="lamp-y" r="6" class="lamp" fill="var(--lamp-off)"/>
-      <circle id="lamp-g" r="6" class="lamp" fill="var(--lamp-off)"/>
-    </g>
-    <!-- trem: locomotiva + 2 carros, montados pelo script -->
-    <g id="train" visibility="hidden" filter="url(#f-sh-high)"></g>
-    <text id="train-label" class="svg-label train-label" text-anchor="middle" visibility="hidden"></text>
-  </svg>
+      <!-- detalhe da agulha (vista de cima), no centro do oval; reduzido e
+           centrado entre o aterro da reta de cima (ate' y 65) e o do ramal (desde y 195) -->
+      <g id="ag" transform="translate(234,82.5) scale(.72)">
+        <rect width="280" height="132" rx="8" class="ag-card" filter="url(#f-sh-high)"/>
+        <text x="12" y="18" class="ag-title">Detalhe da agulha</text>
+        <text id="ag-badge" x="268" y="18" text-anchor="end" class="ag-badge">–</text>
+        <text id="ag-pend" x="268" y="34" text-anchor="end" class="svg-label ag-pend"></text>
+        <!-- trilhos fixos (encosto) da via reta e da desviada -->
+        <line x1="66" y1="62" x2="270" y2="62" class="ag-stock"/>
+        <line x1="66" y1="92" x2="270" y2="92" class="ag-stock"/>
+        <line x1="150" y1="62" x2="270" y2="36" class="ag-stock"/>
+        <line x1="196" y1="84" x2="270" y2="66" class="ag-stock"/>
+        <text x="266" y="81" text-anchor="end" class="svg-label">Normal</text>
+        <text x="266" y="50" text-anchor="end" class="svg-label" transform="rotate(-11 266 50)">Reversa</text>
+        <!-- agulhas moveis: pontas em x=80, calcanhar fixo em x=160 -->
+        <line id="ag-blade-u" x1="80" y1="70" x2="160" y2="65" class="ag-blade"/>
+        <line id="ag-blade-l" x1="80" y1="92" x2="160" y2="89" class="ag-blade"/>
+        <circle cx="160" cy="65" r="2.5" class="ag-heel"/>
+        <circle cx="160" cy="89" r="2.5" class="ag-heel"/>
+        <!-- tirante + haste da maquina de chave -->
+        <line id="ag-bar" x1="84" y1="70" x2="84" y2="92" class="ag-bar"/>
+        <line id="ag-rod" x1="84" y1="110" x2="84" y2="92" class="ag-bar"/>
+        <rect x="64" y="110" width="40" height="14" rx="3" class="ag-machine"/>
+        <text id="ag-ang" x="112" y="121" class="svg-label">máquina de chave –</text>
+        <!-- detectores de fim de curso (contato da ponta com o trilho) -->
+        <circle id="det-r" cx="54" cy="56" r="5" class="lamp" fill="var(--lamp-off)"/>
+        <text x="45" y="60" text-anchor="end" class="svg-label">Det R</text>
+        <circle id="det-n" cx="54" cy="98" r="5" class="lamp" fill="var(--lamp-off)"/>
+        <text x="45" y="102" text-anchor="end" class="svg-label">Det N</text>
+        <text id="obs-mark" x="88" y="66" class="ag-obs" visibility="hidden">✕ obstrução</text>
+      </g>
+      <text x="335" y="276" text-anchor="middle" class="svg-label">Normal (linha principal)</text>
+      <text x="335" y="234" text-anchor="middle" class="svg-label">Reversa (ramal, 30 km/h)</text>
+      <text x="470" y="276" text-anchor="middle" class="svg-label">junção de mola</text>
+      <text x="335" y="40" text-anchor="middle" class="svg-label">← sentido do trem</text>
+      <!-- sinal de protecao (posicionado pelo script, 40 m antes do AMV) -->
+      <g id="sig" filter="url(#f-sh-high)">
+        <line id="sig-mast" stroke="var(--rail)" stroke-width="3"/>
+        <rect id="sig-box" width="18" height="46" rx="5" fill="var(--lamp-off)"/>
+        <circle id="lamp-r" r="6" class="lamp" fill="var(--lamp-off)"/>
+        <circle id="lamp-y" r="6" class="lamp" fill="var(--lamp-off)"/>
+        <circle id="lamp-g" r="6" class="lamp" fill="var(--lamp-off)"/>
+      </g>
+      <!-- trem: locomotiva + 2 carros, montados pelo script -->
+      <g id="train" visibility="hidden" filter="url(#f-sh-high)"></g>
+      <text id="train-label" class="svg-label train-label" text-anchor="middle" visibility="hidden"></text>
+    </svg>
+  </div>
 </div>
 
-<div class="grid2">
-  <div class="stack">
+<header class="float left">
+  <h1>Painel do AMV</h1>
+  <span id="status">aguardando o Wokwi…</span>
+</header>
+<div class="float right">
+  <button id="b-tilt" class="ui" title="Inclina o pátio em perspectiva">Vista inclinada</button>
+  <button id="b-dados" class="ui" aria-controls="drawer" aria-expanded="false">☰ Dados</button>
+</div>
+
+<!-- velocidade do trem: arrasta a manopla e solta no valor desejado -->
+<div id="lever">
+  <div class="lever-title">Trem</div>
+  <div class="lever-val"><span id="lv-alvo">–</span><span class="unit"> km/h</span></div>
+  <div id="lv-track" role="slider" tabindex="0" aria-label="Velocidade máxima do trem (km/h)"
+       aria-valuemin="0" aria-valuemax="80" aria-valuenow="40">
+    <div class="lv-tube"><div id="lv-fill"></div></div>
+    <div id="lv-bulb"></div>
+    <div id="lv-ticks"></div>
+    <div id="lv-real" title="Velocidade real">–</div>
+    <div id="lv-knob"></div>
+  </div>
+  <button data-cmd="vel 0" class="lever-stop">Parar</button>
+</div>
+
+<!-- comandos principais, flutuando sobre o patio -->
+<div id="dock">
+  <div id="dock-msg"><div id="man-msg" class="hint"></div><div id="cmd-msg"></div></div>
+  <div class="dock-bar">
+    <div class="seg">
+      <button data-cmd="n" id="b-n">Normal</button>
+      <button data-cmd="r" id="b-r">Reversa</button>
+      <button data-cmd="t">Alternar</button>
+    </div>
+    <div class="seg">
+      <button data-cmd="emg" class="danger">Emergência</button>
+      <button data-cmd="rearme">Rearme</button>
+    </div>
+  </div>
+</div>
+
+<!-- gaveta lateral com o restante dos dados -->
+<aside id="drawer" aria-label="Dados do AMV" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>Dados do AMV</h2>
+    <button id="b-fechar" class="ui" aria-label="Fechar">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div id="nolib">Não consegui carregar o Chart.js (tools/chart.umd.min.js), então o gráfico não vai aparecer.</div>
+    <p class="muted" style="margin:0">O trem circula no sentido anti-horário. Pela rota Normal ele segue a linha principal; pela Reversa entra no ramal a no máximo 30 km/h. A faixa vermelha é o circuito de via, que impede mover o AMV enquanto o trem está nele.</p>
     <div class="tiles">
       <div class="tile"><div class="label">Estado</div><div class="value" id="v-est">–</div></div>
       <div class="tile"><div class="label">Comandada</div><div class="value" id="v-cmd">–</div></div>
@@ -289,81 +411,60 @@
       <div class="tile"><div class="label">Freio</div><div class="value" id="v-freio">–</div></div>
       <div class="tile"><div class="label">Tempo da placa</div><div class="value"><span id="v-t">–</span><span class="unit">s</span></div></div>
     </div>
-  </div>
-  <div class="card">
-    <h2>Comandos</h2>
-    <p>Cada botão manda uma linha pela serial. A placa responde com <code>ok …</code> e com os eventos no log.</p>
-    <div class="controls">
-      <div class="group"><span class="label">Manobra</span>
-        <div class="row">
-          <button data-cmd="n" id="b-n">Normal</button>
-          <button data-cmd="r" id="b-r">Reversa</button>
-          <button data-cmd="t">Alternar</button>
+    <div class="card">
+      <h2>Mais comandos</h2>
+      <p>Cada botão manda uma linha pela serial. A placa responde com <code>ok …</code> e com os eventos no log.</p>
+      <div class="controls">
+        <div class="group"><span class="label">Trem</span>
+          <div class="row">
+            <button data-cmd="trem" title="Recoloca o trem nos trilhos, parado no início da linha">Recolocar trem</button>
+          </div>
         </div>
-        <div id="man-msg" class="hint"></div>
-      </div>
-      <div class="group"><span class="label">Velocidade do trem (0 a 80 km/h)</span>
-        <div class="row">
-          <input type="number" id="vel" min="0" max="80" step="5" value="40">
-          <button id="b-vel">Aplicar</button>
-          <button data-cmd="vel 0">Parar</button>
-          <button data-cmd="trem" title="Recoloca o trem nos trilhos, parado no início da linha">Recolocar trem</button>
+        <div class="group"><span class="label">Placa</span>
+          <div class="row">
+            <button id="b-reboot" title="Reset completo da placa: tempo, medições e estado voltam do zero">Reiniciar tudo</button>
+          </div>
         </div>
-      </div>
-      <div class="group"><span class="label">Segurança</span>
-        <div class="row">
-          <button data-cmd="emg" class="danger">Emergência</button>
-          <button data-cmd="rearme">Rearme</button>
-          <button id="b-reboot" title="Reset completo da placa: tempo, medições e estado voltam do zero">Reiniciar tudo</button>
+        <div class="group"><span class="label">Injetar condição</span>
+          <div class="row">
+            <button id="b-occ" title="Ocupa o circuito de via mesmo sem trem">Ocupar via</button>
+            <button id="b-obs">Obstruir agulha</button>
+          </div>
         </div>
-      </div>
-      <div class="group"><span class="label">Injetar condição</span>
-        <div class="row">
-          <button id="b-occ" title="Ocupa o circuito de via mesmo sem trem">Ocupar via</button>
-          <button id="b-obs">Obstruir agulha</button>
-        </div>
-      </div>
-      <div class="group"><span class="label">Comando livre (<code>help</code> lista)</span>
-        <div class="row">
-          <input type="text" id="cmd" placeholder="ex.: stats" autocomplete="off">
-          <button id="b-cmd">Enviar</button>
+        <div class="group"><span class="label">Comando livre (<code>help</code> lista)</span>
+          <div class="row">
+            <input type="text" id="cmd" placeholder="ex.: stats" autocomplete="off">
+            <button id="b-cmd">Enviar</button>
+          </div>
         </div>
       </div>
     </div>
-    <div id="cmd-msg"></div>
-  </div>
-</div>
-
-<div class="grid2">
-  <div class="card">
-    <h2>Tempo medido × tempo calculado</h2>
-    <p>Medido na placa com o TIM14 (1 µs) e o tick do FreeRTOS (1 ms). A meta vem de docs/ARQUITETURA.md.</p>
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th>Caminho</th><th>Último</th><th>Máximo</th><th>Meta</th><th></th></tr></thead>
-      <tbody id="tm-body"></tbody>
-    </table>
+    <div class="card">
+      <h2>Tempo medido × tempo calculado</h2>
+      <p>Medido na placa com o TIM14 (1 µs) e o tick do FreeRTOS (1 ms). A meta vem de docs/ARQUITETURA.md.</p>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>Caminho</th><th>Último</th><th>Máximo</th><th>Meta</th><th></th></tr></thead>
+        <tbody id="tm-body"></tbody>
+      </table>
+      </div>
+      <p class="muted" id="tm-counts" style="margin-top:8px">–</p>
+      <p class="muted" id="stk">Pilha livre por tarefa: envie <code>stats</code>.</p>
     </div>
-    <p class="muted" id="tm-counts" style="margin-top:8px">–</p>
-    <p class="muted" id="stk">Pilha livre por tarefa: envie <code>stats</code>.</p>
+    <div class="card">
+      <h2>Eventos</h2>
+      <div id="log"></div>
+    </div>
+    <div class="card">
+      <h2>Ângulo da máquina de chave</h2>
+      <p>A cor da linha mostra o aspecto do sinal naquele instante. Ele só fica verde ou amarelo com o AMV travado.</p>
+      <div class="plot"><canvas id="c-ang"></canvas></div>
+    <div class="card">
+      <h2>Velocidade do trem</h2>
+      <p>Azul: tração ou velocidade constante. Amarelo: frenagem de serviço (curva de parada no sinal). Vermelho: frenagem de emergência.</p>
+      <div class="plot"><canvas id="c-vel"></canvas></div>
   </div>
-  <div class="card">
-    <h2>Eventos</h2>
-    <div id="log"></div>
-  </div>
-</div>
-
-<div class="card">
-  <h2>Ângulo da máquina de chave</h2>
-  <p>A cor da linha mostra o aspecto do sinal naquele instante. Ele só fica verde ou amarelo com o AMV travado.</p>
-  <div class="plot"><canvas id="c-ang"></canvas></div>
-</div>
-
-<div class="card" style="margin-top:16px">
-  <h2>Velocidade do trem</h2>
-  <p>Azul: tração ou velocidade constante. Amarelo: frenagem de serviço (curva de parada no sinal). Vermelho: frenagem de emergência.</p>
-  <div class="plot"><canvas id="c-vel"></canvas></div>
-</div>
+</aside>
 
 <script>
 (function () {
@@ -586,6 +687,81 @@
     $("obs-mark").setAttribute("y", s.cmd === "R" ? 58 : 104);
   }
 
+  // ---------- alavanca de velocidade ----------
+  // A manopla e' o limite pedido (vmax), em passos de 5 km/h; o comando so'
+  // sai ao soltar. Pelo teclado, sai 400 ms depois da ultima tecla.
+  // Depois de enviar, a manopla segura o valor ate' o vmax do "tr" confirmar:
+  // as amostras que chegam antes de a placa processar o comando ainda trazem o
+  // valor antigo, e sem isso a manopla pulava de volta (e parecia travada).
+  const V_MAX = 80, V_PASSO = 5;
+  const track = $("lv-track");
+  const T_CONFIRMA_VEL = 3000;                          // ms ate' desistir de esperar a placa
+  let alvo = 0, arrastando = false, teclaTimer = null, pedidoVel = null;
+  const leverBusy = () => arrastando || teclaTimer !== null || pedidoVel !== null;
+  async function pedeVel(v) {
+    pedidoVel = { v, ate: performance.now() + T_CONFIRMA_VEL };
+    if (!(await send(`vel ${v}`))) pedidoVel = null;   // nem chegou na placa: volta ao valor dela
+  }
+  // chamada a cada "tr": encerra a espera quando a placa confirma ou o prazo acaba
+  function confirmaVel(vmax) {
+    if (!pedidoVel) return;
+    if (vmax === pedidoVel.v) pedidoVel = null;
+    else if (performance.now() > pedidoVel.ate) {
+      $("cmd-msg").textContent = `a placa não confirmou ${pedidoVel.v} km/h (continua em ${vmax})`;
+      pedidoVel = null;
+    }
+  }
+  for (let v = 0; v <= V_MAX; v += 20) {
+    const t = document.createElement("div");
+    t.className = "lv-tick";
+    t.style.bottom = `${v / V_MAX * 100}%`;
+    t.textContent = v;
+    $("lv-ticks").appendChild(t);
+  }
+  function showLever(v) {
+    alvo = Math.max(0, Math.min(V_MAX, Math.round(v / V_PASSO) * V_PASSO));
+    $("lv-knob").style.bottom = `calc(${alvo / V_MAX * 100}% - 7px)`;
+    $("lv-alvo").textContent = alvo;
+    track.setAttribute("aria-valuenow", alvo);
+  }
+  function showReal(kmh, cor) {
+    $("lv-fill").style.height = `${Math.min(1, kmh / V_MAX) * 100}%`;
+    $("lv-fill").style.backgroundColor = cor;
+    $("lv-bulb").style.backgroundColor = cor;
+    $("lv-real").textContent = kmh.toFixed(0);
+    $("lv-real").style.bottom = `${Math.min(1, kmh / V_MAX) * 100}%`;
+    $("lv-real").style.setProperty("--real-cor", cor);
+  }
+  const valFromY = (y) => { const r = track.getBoundingClientRect(); return (1 - (y - r.top) / r.height) * V_MAX; };
+  track.addEventListener("pointerdown", (e) => {
+    if ($("lever").classList.contains("off")) return;
+    arrastando = true;
+    track.setPointerCapture(e.pointerId);
+    track.classList.add("drag");
+    showLever(valFromY(e.clientY));
+    e.preventDefault();
+  });
+  track.addEventListener("pointermove", (e) => { if (arrastando) showLever(valFromY(e.clientY)); });
+  const solta = () => {
+    if (!arrastando) return;
+    arrastando = false;
+    track.classList.remove("drag");
+    pedeVel(alvo);
+  };
+  track.addEventListener("pointerup", solta);
+  track.addEventListener("pointercancel", solta);
+  track.addEventListener("lostpointercapture", solta);   // ex.: trocou de janela no meio do arrasto
+  track.addEventListener("keydown", (e) => {
+    const d = { ArrowUp: V_PASSO, ArrowRight: V_PASSO, ArrowDown: -V_PASSO, ArrowLeft: -V_PASSO,
+                PageUp: 20, PageDown: -20, Home: -V_MAX, End: V_MAX }[e.key];
+    if (d === undefined || $("lever").classList.contains("off")) return;
+    e.preventDefault();
+    showLever(alvo + d);
+    clearTimeout(teclaTimer);
+    teclaTimer = setTimeout(() => { teclaTimer = null; pedeVel(alvo); }, 400);
+  });
+  showLever(40);
+
   // ---------- trem ----------
   // Chega a cada 100 ms; entre uma amostra e outra a posicao e' estimada com
   // a velocidade (no maximo 250 ms a frente) para a animacao ficar suave.
@@ -597,7 +773,9 @@
     $("v-vel").textContent = kmh.toFixed(0);
     $("v-freio").textContent = tr.desc ? "descarrilou" : FREIO_NOME[tr.freio] ?? "–";
     $("v-freio").className = "value" + (tr.desc || tr.freio === 2 ? " est-falha" : tr.freio === 1 ? " est-movendo" : "");
-    if (document.activeElement !== $("vel")) $("vel").value = tr.vmax;
+    showReal(kmh, tr.desc ? css("--bad") : FREIO_COLOR()[tr.freio] || css("--train"));
+    confirmaVel(Number(tr.vmax));
+    if (!leverBusy()) showLever(tr.vmax);
     if (velChart && tr.t !== undefined) {
       const d = velChart.data.datasets[0].data;
       d.push({ x: tr.t / 1000, y: kmh, freio: tr.freio });
@@ -721,24 +899,34 @@
       const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json" },
                                       body: JSON.stringify({ cmd }) });
       if (!r.ok) $("cmd-msg").textContent = (await r.json()).error || `erro ${r.status}`;
-    } catch (e) { $("cmd-msg").textContent = "o servidor Python não respondeu"; }
+      return r.ok;
+    } catch (e) { $("cmd-msg").textContent = "o servidor Python não respondeu"; return false; }
   }
   document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => send(b.dataset.cmd)));
   $("b-occ").addEventListener("click", () => send(`occ ${occ ? 0 : 1}`));
   $("b-obs").addEventListener("click", () => send(`obs ${obs ? 0 : 1}`));
-  const sendVel = () => send(`vel ${Math.max(0, Math.min(80, parseInt($("vel").value, 10) || 0))}`);
-  $("b-vel").addEventListener("click", sendVel);
-  $("vel").addEventListener("keydown", (e) => { if (e.key === "Enter") sendVel(); });
   $("b-reboot").addEventListener("click", () => {
     if (confirm("Reiniciar a placa? O tempo, as medições e o estado voltam do zero.")) send("reiniciar");
   });
   const setTilt = (on) => {
-    $("yard").classList.toggle("tilt", on);
+    $("world").classList.toggle("tilt", on);
     $("b-tilt").classList.toggle("active", on);
     try { localStorage.setItem("amv-tilt", on ? "1" : ""); } catch (e) {}
   };
   try { setTilt(localStorage.getItem("amv-tilt") === "1"); } catch (e) {}
-  $("b-tilt").addEventListener("click", () => setTilt(!$("yard").classList.contains("tilt")));
+  $("b-tilt").addEventListener("click", () => setTilt(!$("world").classList.contains("tilt")));
+  // gaveta de dados: botao, X ou Esc
+  const setDrawer = (on) => {
+    document.body.classList.toggle("drawer-open", on);
+    $("drawer").setAttribute("aria-hidden", String(!on));
+    $("b-dados").setAttribute("aria-expanded", String(on));
+    $("b-dados").classList.toggle("active", on);
+    try { localStorage.setItem("amv-dados", on ? "1" : ""); } catch (e) {}
+  };
+  try { setDrawer(localStorage.getItem("amv-dados") === "1"); } catch (e) {}
+  $("b-dados").addEventListener("click", () => setDrawer(!document.body.classList.contains("drawer-open")));
+  $("b-fechar").addEventListener("click", () => setDrawer(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setDrawer(false); });
   const sendFree = () => { const c = $("cmd").value.trim(); if (c) { send(c); $("cmd").value = ""; } };
   $("b-cmd").addEventListener("click", sendFree);
   $("cmd").addEventListener("keydown", (e) => { if (e.key === "Enter") sendFree(); });
@@ -769,7 +957,8 @@
       redraw();
     } else if (ev.type === "status") {
       $("status").className = ev.connected ? "on" : "";
-      document.querySelectorAll("button:not(#b-tilt)").forEach((b) => (b.disabled = !ev.connected));
+      document.querySelectorAll("button:not(.ui)").forEach((b) => (b.disabled = !ev.connected));
+      $("lever").classList.toggle("off", !ev.connected);
       $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
                                              : "sem conexão com o Wokwi (inicie o simulador)";
     }

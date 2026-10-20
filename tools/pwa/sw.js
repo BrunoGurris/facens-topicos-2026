@@ -3,7 +3,7 @@
  * sem rede -- nesse caso a pagina mostra "sem conexao". Estado e comandos
  * (/events, /cmd, /auth) sempre vao direto para o servidor, nunca do cache.
  * Rede primeiro: quando o servidor responde, a versao nova substitui a antiga. */
-const CACHE = "amv-v2";
+const CACHE = "amv-v3";
 const CASCA = ["/m", "/manifest.webmanifest", "/pwa/icon-192.png", "/pwa/icon-512.png"];
 
 self.addEventListener("install", (e) => {

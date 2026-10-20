@@ -196,9 +196,10 @@
     try {
       const r = await fetch("/cmd", { method: "POST", headers: { "Content-Type": "application/json", ...hdr() },
                                       body: JSON.stringify({ cmd }) });
-      if (r.status === 401) return mostraLogin(true);
+      if (r.status === 401) { mostraLogin(true); return false; }
       if (!r.ok) $("msg").textContent = (await r.json()).error || `erro ${r.status}`;
-    } catch (e) { $("msg").textContent = "sem conexão com o servidor"; }
+      return r.ok;
+    } catch (e) { $("msg").textContent = "sem conexão com o servidor"; return false; }
   }
   document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => {
     if (b.dataset.cmd === "emg" && navigator.vibrate) navigator.vibrate(200);
@@ -212,10 +213,16 @@
   });
 
   // velocidade: o rotulo segue o dedo; o comando sai ao soltar
-  let arrastando = false;
+  // depois de soltar, segura o valor ate' o vmax do "tr" confirmar (ou 3 s):
+  // as amostras anteriores ao comando ainda trazem o valor antigo
+  let arrastando = false, pedidoVel = null;
   const vel = $("vel");
   vel.addEventListener("input", () => { arrastando = true; $("vel-val").textContent = `${vel.value} km/h`; });
-  vel.addEventListener("change", () => { arrastando = false; send(`vel ${vel.value}`); });
+  vel.addEventListener("change", async () => {
+    arrastando = false;
+    pedidoVel = { v: Number(vel.value), ate: performance.now() + 3000 };
+    if (!(await send(`vel ${vel.value}`))) pedidoVel = null;
+  });
 
   function mostraEstado(s) {
     const col = SIG();
@@ -248,7 +255,11 @@
     $("t-trem").className = "v" + (tr.desc ? " bad" : "");
     $("t-freio").textContent = FREIO[tr.freio] ?? "–";
     $("t-freio").className = "v" + (tr.freio === 2 ? " bad" : tr.freio === 1 ? " warn" : "");
-    if (!arrastando) { vel.value = tr.vmax; $("vel-val").textContent = `${tr.vmax} km/h`; }
+    if (pedidoVel && (Number(tr.vmax) === pedidoVel.v || performance.now() > pedidoVel.ate)) {
+      if (Number(tr.vmax) !== pedidoVel.v) $("msg").textContent = `a placa não confirmou ${pedidoVel.v} km/h`;
+      pedidoVel = null;
+    }
+    if (!arrastando && !pedidoVel) { vel.value = tr.vmax; $("vel-val").textContent = `${tr.vmax} km/h`; }
   }
   function addLog(ev) {
     if (ev.type !== "ev" && !(ev.text || "").startsWith("err")) return;   // so' eventos e erros

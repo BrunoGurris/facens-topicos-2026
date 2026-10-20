@@ -199,7 +199,14 @@ borda tracejada e a mensagem "Pedido para … em espera".
 ## 5. Painel web: pátio, comandos e tempos
 
 O script `tools/painel_amv.py` conecta na serial da placa simulada e abre uma
-página no navegador com:
+página no navegador. O pátio ocupa a tela toda; os comandos principais
+(**Normal / Reversa / Alternar**, **Emergência / Rearme**) ficam numa barra
+flutuante embaixo. A velocidade do trem é uma **alavanca em forma de termômetro**
+na lateral direita: o "mercúrio" sobe com a velocidade real (na cor do freio), com
+o número ao lado acompanhando a altura, e a manopla é o limite pedido. Arraste e solte no valor desejado (passos de 5 km/h;
+pelo teclado, setas/PageUp/PageDown/Home/End); embaixo dela fica o **Parar**. O botão **☰ Dados**
+abre uma gaveta lateral com o resto (quadros de estado, demais comandos,
+tempos, log e gráficos; fecha no ✕ ou com Esc). Ao todo a página tem:
 
 - o **pátio visto de cima**: lastro, dormentes e trilhos da linha principal oval e do ramal da
   rota Reversa, as agulhas do AMV mudando de posição na própria via, a rota estabelecida (na cor do
@@ -210,8 +217,8 @@ página no navegador com:
 - o **detalhe da agulha** (vista de cima, no centro do oval): trilhos de encosto, as duas agulhas
   móveis seguindo o ângulo real do servo, tirante, máquina de chave, detectores N/R, estado
   (TRAVADO / MOVENDO / FALHA / EMERGÊNCIA) e o pedido em espera;
-- o campo de **velocidade do trem** (0 a 80 km/h), o botão Parar e o "Recolocar trem";
-- os botões **Normal / Reversa / Alternar / Emergência / Rearme / Reiniciar tudo** e os de simular trem e obstrução.
+- a **alavanca de velocidade do trem** (0 a 80 km/h), o botão Parar e o "Recolocar trem";
+- os botões **Normal / Reversa / Alternar / Emergência / Rearme / Reiniciar tudo** e os de simular ocupação e obstrução.
   "Reiniciar tudo" reseta a placa e o painel limpa o gráfico, o log e a tabela de tempos;
 - a tabela **tempo medido × tempo calculado** (latência da emergência, da
   perda de detecção, do pedido, duração da manobra e jitter do motor) com ✓ ou ✕;
