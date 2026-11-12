@@ -108,7 +108,7 @@ Ao final deve aparecer algo como:
 
 ```
    text    data     bss     dec     hex filename
-  28216     328    7952   36496    8e90 build/debug/build/amv.elf
+  29120     328    8464   37912    9418 build/debug/build/amv.elf
 ```
 
 e os arquivos `build/debug/build/amv.elf` e `amv.hex` são gerados. São eles que o Wokwi carrega.

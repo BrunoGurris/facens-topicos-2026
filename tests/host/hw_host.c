@@ -72,3 +72,7 @@ HAL_StatusTypeDef HAL_UART_Transmit_IT(UART_HandleTypeDef *h, const uint8_t *d, 
   xSemaphoreGive(g_sem_tx);
   return HAL_OK;
 }
+
+/* Na placa, o gancho do tick trata EXTI pendente (amv_hw.c). Aqui cada
+ * borda ja' vira evento direto, entao nao ha' nada a fazer. */
+void vApplicationTickHook(void) {}

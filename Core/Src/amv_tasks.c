@@ -69,7 +69,7 @@ static StaticSemaphore_t mtx_amv_ctl, sem_tx_ctl;
 #define STK_SINAL   (96 * STK_ESCALA)
 #define STK_PLANTA  (96 * STK_ESCALA)
 #define STK_TREM    (128 * STK_ESCALA)
-#define STK_COMM    (256 * STK_ESCALA)
+#define STK_COMM    (384 * STK_ESCALA)   /* 256 deixava so 8 palavras livres (snprintf) */
 
 typedef struct {
   TaskFunction_t fn;

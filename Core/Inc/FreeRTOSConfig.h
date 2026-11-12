@@ -51,7 +51,7 @@ void amv_assert_failed(const char *file, int line);
 
 /* ---- Hooks e diagnostico -------------------------------------------- */
 #define configUSE_IDLE_HOOK                     0
-#define configUSE_TICK_HOOK                     0
+#define configUSE_TICK_HOOK                     1   /* redundancia do EXTI (amv_hw.c) */
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_TRACE_FACILITY                0

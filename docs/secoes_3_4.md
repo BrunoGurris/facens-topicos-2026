@@ -171,7 +171,7 @@ A aplicação foi dividida em sete tarefas, além da tarefa ociosa do kernel. As
 | tSinal | 2 | Periódica de 50 ms | 96 | Aspecto do sinal, leitura da ocupação, rearme e heartbeat |
 | tPlanta | 2 | Periódica de 10 ms | 96 | Simulação dos contatos dos detectores |
 | tTrem | 2 | Periódica de 50 ms | 128 | Simulação do trem no circuito |
-| tComm | 1 | Evento: fila de log + varredura da recepção a cada 10 ms | 256 | Protocolo serial e telemetria |
+| tComm | 1 | Evento: fila de log + varredura da recepção a cada 10 ms | 384 | Protocolo serial e telemetria |
 | Idle | 0 | Kernel | 80 | Executa quando nenhuma outra tarefa está pronta |
 
 *Fonte - Próprio Autor (2026).*
@@ -208,6 +208,8 @@ O estado compartilhado do AMV, que inclui o estado da máquina, as posições co
 
 O comando de parada do motor é inserido na frente da fila (xQueueSendToFront), de modo que tenha precedência sobre eventuais comandos de movimento pendentes. A serial, por sua vez, não utiliza mutex, pois apenas a tarefa de comunicação transmite dados. As demais tarefas enviam mensagens para a fila de log com timeout zero e, portanto, nunca aguardam pela serial: se a fila estiver cheia, perde-se uma mensagem de log, mas nunca um prazo. A transmissão é feita por interrupção, e o semáforo binário sinaliza à tarefa de comunicação o término de cada envio.
 
+As interrupções externas dos detectores e dos botões contam ainda com um segundo caminho de atendimento. A cada tick de 1 ms, o gancho de tick do FreeRTOS (vApplicationTickHook) verifica se alguma dessas linhas permanece pendente sem ter sido atendida e, nesse caso, executa o mesmo tratamento da rotina de interrupção, em seção crítica, para que um mesmo evento não seja tratado duas vezes. Esse mecanismo, incluído após os testes no simulador (seção 5.2), garante que um evento de detector seja tratado em até 1 ms mesmo que a interrupção não seja entregue ao processador.
+
 ### 4.3 FLUXO DE EXECUÇÃO
 
 Em uma manobra de Normal para Reversa, o operador envia o comando pelo botão ou pela serial, e a mensagem chega à fila de comandos. A tarefa de intertravamento obtém o mutex, verifica se a via está livre e se o AMV não está em movimento ou já na posição pedida, altera o estado para MOVENDO, coloca o sinal em vermelho e envia à tarefa de motor o comando de mover para 135°, armando em seguida o watchdog de 4.500 ms. A tarefa de motor executa 150 passos de 0,6° a cada 20 ms. Ao atingir o fim do curso, a tarefa de planta abre o contato da posição normal e, após 100 ms de estabilidade, fecha o contato da posição reversa, que, pelo fio, gera uma interrupção no pino do detector. A rotina de interrupção envia o evento à tarefa de segurança, que confirma que a posição detectada é igual à comandada e envia a confirmação à tarefa de intertravamento. Esta muda o estado para TRAVADO e registra a duração da manobra. No ciclo seguinte, em até 50 ms, a tarefa de sinal passa o aspecto para amarelo. A Figura 4 apresenta essa sequência.
@@ -234,17 +236,17 @@ Todos os objetos do RTOS foram criados com alocação estática (configSUPPORT_D
 
 | Item | Bytes |
 |---|---|
-| Pilhas das 7 tarefas (944 palavras) | 3.776 |
+| Pilhas das 7 tarefas (1.072 palavras) | 4.288 |
 | Pilha da tarefa ociosa (80 palavras) | 320 |
 | Blocos de controle das tarefas (8 × 80 B) | 640 |
 | Controle das filas, mutex e semáforo (7 × 72 B) | 504 |
 | Buffers das filas | 256 |
-| Total do RTOS | ≈ 5,4 KB de 12 KB de RAM |
-| Firmware completo | text 28.216 B (de 32 KB de Flash); data 328 B; bss 7.952 B |
+| Total do RTOS | ≈ 5,9 KB de 12 KB de RAM |
+| Firmware completo | text 29.120 B (de 32 KB de Flash); data 328 B; bss 8.464 B |
 
 *Fonte - Próprio Autor (2026).*
 
-Para detectar falhas em tempo de execução, foram habilitados o gancho de estouro de pilha (vApplicationStackOverflowHook) e as asserções do kernel (configASSERT). Em ambos os casos, o hardware é levado ao estado seguro, com sinal vermelho e PWM do servomotor desligado. A pilha livre de cada tarefa pode ser consultada em tempo de execução, o que permite validar o dimensionamento adotado.
+Para detectar falhas em tempo de execução, foram habilitados o gancho de estouro de pilha (vApplicationStackOverflowHook) e as asserções do kernel (configASSERT). Em ambos os casos, o hardware é levado ao estado seguro, com sinal vermelho e PWM do servomotor desligado. A pilha livre de cada tarefa pode ser consultada em tempo de execução, o que permite validar o dimensionamento adotado; com base nessa medição, a pilha da tarefa de comunicação foi ampliada de 256 para 384 palavras (seção 5.3).
 
 ### 4.5 INSTRUMENTAÇÃO E INTERFACE
 

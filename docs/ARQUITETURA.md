@@ -141,7 +141,7 @@ fila, a maioria dos pedidos seria perdida.
 | `tSinal` | 2 | periódica 50 ms | 96 | escreve o aspecto do sinal, lê ocupação, rearme, heartbeat |
 | `tPlanta` | 2 | periódica 10 ms | 96 | **simulação** dos contatos dos detectores (não existe no campo) |
 | `tTrem` | 2 | periódica 50 ms | 128 | **simulação** do trem no circuito: obedece o sinal, ocupa a via (seção 1.2) |
-| `tComm` | 1 | evento `g_q_log` (e varre `g_q_rx` a cada 10 ms) | 256 | protocolo serial, telemetria (AMV a 250 ms, trem a 100 ms) |
+| `tComm` | 1 | evento `g_q_log` (e varre `g_q_rx` a cada 10 ms) | 384 | protocolo serial, telemetria (AMV a 250 ms, trem a 100 ms) |
 | idle | 0 | (kernel) | 80 | roda quando nada mais está pronto |
 
 As prioridades seguem a **criticidade**: quem leva ao estado seguro vem
@@ -175,17 +175,23 @@ prioridade limita o bloqueio do `tSeg` ao trecho curto do `tSinal`.
 mandam mensagens pela `g_q_log` com timeout 0, então **nunca esperam pela
 serial**. Se a fila encher, perde-se um log, nunca um prazo.
 
+**Segundo caminho das interrupções (`vApplicationTickHook`).** A cada tick de
+1 ms, o gancho confere se alguma linha EXTI (detectores, botões) ficou pendente
+sem ser atendida e a trata ali, em seção crítica. Na placa a ISR limpa o flag
+antes e o gancho não faz nada. No Wokwi, que marca o pendente mas não entrega a
+IRQ do EXTI no STM32C0, é isso que garante a perda de detecção em até ~1 ms.
+
 ### 3.3 Memória (medido no `.map`, build `-Og`)
 
 | Item | Bytes |
 |---|---|
-| Pilhas das 7 tarefas (944 palavras) | 3 776 |
+| Pilhas das 7 tarefas (1 072 palavras) | 4 288 |
 | Pilha da idle (80 palavras) | 320 |
 | TCBs (8 × 80 B) | 640 |
 | Controle das filas/mutex/semáforo (7 × 72 B) | 504 |
 | Buffers das filas | 256 |
-| **Total do RTOS** | **≈ 5,4 KB** de 12 KB |
-| Firmware inteiro (`arm-none-eabi-size`) | text 28 216 B (de 32 KB), data 328 B, bss 7 952 B |
+| **Total do RTOS** | **≈ 5,9 KB** de 12 KB |
+| Firmware inteiro (`arm-none-eabi-size`) | text 29 120 B (de 32 KB), data 328 B, bss 8 464 B |
 
 A pilha livre real de cada tarefa sai no comando `stats` (linha `stk`, em
 palavras). Use esse valor para justificar o tamanho de cada pilha.

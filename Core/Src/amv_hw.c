@@ -202,6 +202,26 @@ void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin)
   portYIELD_FROM_ISR(acordou);
 }
 
+/* Redundancia das interrupcoes externas: a cada tick (1 ms), se alguma
+ * linha EXTI ficou pendente sem ser atendida, trata aqui mesmo. Na placa
+ * a ISR normal limpa o flag antes e isto nao faz nada; no Wokwi, que marca
+ * o pendente mas nao entrega a IRQ do EXTI no STM32C0, e' o que garante a
+ * deteccao da perda de posicao com o AMV travado (em ate' 1 ms, dentro da
+ * meta de 10 ms). A latencia medida parte do instante em que o pendente e'
+ * tratado, entao nao inclui esse ate' 1 ms de espera.
+ * A secao critica evita que a ISR verdadeira e esta tratem o mesmo flag. */
+void vApplicationTickHook(void)
+{
+  static const uint16_t linhas[] = {
+    Det_Normal_Pin, Det_Reversa_Pin, Btn_Comando_Pin, Btn_Emergencia_Pin
+  };
+  UBaseType_t m = taskENTER_CRITICAL_FROM_ISR();
+  for (unsigned i = 0; i < sizeof(linhas) / sizeof(linhas[0]); i++)
+    if ((EXTI->RPR1 | EXTI->FPR1) & linhas[i])
+      HAL_GPIO_EXTI_IRQHandler(linhas[i]);
+  taskEXIT_CRITICAL_FROM_ISR(m);
+}
+
 /* UART: cada byte recebido vai para g_q_rx; o fim de uma transmissao
  * libera o semaforo g_sem_tx que a tarefa de comunicacao esta' esperando. */
 void amv_hw_uart_rx_start(void)
