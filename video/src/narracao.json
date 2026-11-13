@@ -1,0 +1,12 @@
+{
+  "titulo": "Controle de desvio ferroviário com fri érre tê ó ésse.",
+  "boot": "Ao ligar, a agulha vai para a posição normal, e só então o sinal abre.",
+  "manobra": "No pedido de manobra, o sinal fecha na hora, e a agulha muda em três segundos.",
+  "ramal": "Com o sinal amarelo, o trem reduz para trinta quilômetros por hora e entra no ramal.",
+  "espera": "Com o trem sobre o desvio, o pedido espera a via liberar.",
+  "emerg": "Na emergência, o sinal fecha em duzentos microssegundos. O trem freia e para antes do sinal.",
+  "obstr": "Agulha obstruída: o sistema detecta e fecha o sinal.",
+  "frenagem": "O trem segue uma curva de frenagem. A oitenta por hora, ele para em duzentos e seis metros, ou em noventa e nove na emergência.",
+  "numeros": "Todos os tempos medidos na placa ficaram bem abaixo das metas.",
+  "fim": "O sinal só abre com o desvio travado."
+}

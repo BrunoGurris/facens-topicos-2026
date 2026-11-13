@@ -206,7 +206,13 @@ na lateral direita: o "mercúrio" sobe com a velocidade real (na cor do freio), 
 o número ao lado acompanhando a altura, e a manopla é o limite pedido. Arraste e solte no valor desejado (passos de 5 km/h;
 pelo teclado, setas/PageUp/PageDown/Home/End); embaixo dela fica o **Parar**. O botão **☰ Dados**
 abre uma gaveta lateral com o resto (quadros de estado, demais comandos,
-tempos, log e gráficos; fecha no ✕ ou com Esc). Ao todo a página tem:
+tempos, log e gráficos; fecha no ✕ ou com Esc).
+
+Alguns comandos também ficam **no próprio desenho**, ao lado da peça que comandam:
+o ícone de desvio junto da máquina de chave muda a agulha, a placa "pare" embaixo
+do sinal para o trem, o ícone de vagão perto do circuito de via liga/desliga a
+ocupação, o botão "obstruir" no detalhe da agulha liga/desliga a obstrução e, com o
+trem descarrilado, aparece "↺ Recolocar" em cima dele. Ao todo a página tem:
 
 - o **pátio visto de cima**: lastro, dormentes e trilhos da linha principal oval e do ramal da
   rota Reversa, as agulhas do AMV mudando de posição na própria via, a rota estabelecida (na cor do

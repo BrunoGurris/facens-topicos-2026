@@ -203,6 +203,18 @@
   .ag-bar { stroke: var(--accent); stroke-width: 2; }
   .ag-machine { fill: var(--lamp-off); stroke: var(--border); }
   .ag-obs { fill: var(--bad); font-size: 11px; font-weight: 700; }
+  /* botoes dentro do patio, ao lado da peca que comandam */
+  .ybtn { cursor: pointer; outline: none; }
+  .ybtn-bg { fill: var(--card); stroke: var(--border); stroke-width: 1; }
+  .ybtn:hover .ybtn-bg, .ybtn:focus-visible .ybtn-bg { stroke: var(--accent); stroke-width: 2; }
+  .ybtn.active .ybtn-bg { stroke: var(--accent); stroke-width: 2.5; }
+  .ybtn-ico { fill: none; stroke: var(--text-primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ybtn-txt { fill: var(--text-primary); font-size: 10px; font-weight: 600; }
+  .ybtn-cap { fill: var(--text-secondary); font-size: 8.5px; pointer-events: none; }
+  .ybtn.stop .ybtn-bg { fill: var(--sig-red); stroke: #fff; stroke-width: 1.5; }
+  .ybtn.stop:hover .ybtn-bg, .ybtn.stop:focus-visible .ybtn-bg { stroke: var(--accent); stroke-width: 2.5; }
+  .ybtn.stop .ybtn-ico { stroke: #fff; }
+  .ybtn.off { opacity: .4; pointer-events: none; }
   button.pending { border-style: dashed; border-color: var(--sig-yellow); }
   .hint { color: var(--sig-yellow); font-size: 12px; }
   .svg-label { fill: var(--text-secondary); font-size: 12px; }
@@ -301,6 +313,21 @@
       <circle cx="212" cy="246" r="28" class="amv-ring"/>
       <line x1="226" y1="222" x2="242" y2="178" class="amv-ring"/>
       <text x="212" y="292" text-anchor="middle" class="svg-label">AMV</text>
+      <!-- mudar a agulha: ao lado da maquina de chave -->
+      <g id="yb-amv" class="ybtn" role="button" tabindex="0" data-cmd="t" transform="translate(168,284)">
+        <title>Mudar a agulha (alterna Normal / Reversa)</title>
+        <circle r="12" class="ybtn-bg" filter="url(#f-sh-mini)"/>
+        <path d="M -7 4 H 7 M -7 4 C -1 4 1 -5 7 -5" class="ybtn-ico"/>
+        <text y="23" text-anchor="middle" class="ybtn-cap">agulha</text>
+      </g>
+      <!-- circuito de via: forca a ocupacao sem trem -->
+      <g id="yb-occ" class="ybtn" role="button" tabindex="0" aria-pressed="false" transform="translate(100,285)">
+        <title>Ocupar o circuito de via (sem trem)</title>
+        <circle r="12" class="ybtn-bg" filter="url(#f-sh-mini)"/>
+        <path d="M -8 5 H 8 M -6 5 V 7 M 0 5 V 7 M 6 5 V 7" class="ybtn-ico"/>
+        <rect x="-6" y="-5" width="12" height="7" rx="1.5" class="ybtn-ico"/>
+        <text y="23" text-anchor="middle" class="ybtn-cap">ocupar via</text>
+      </g>
 
       <!-- detalhe da agulha (vista de cima), no centro do oval; reduzido e
            centrado entre o aterro da reta de cima (ate' y 65) e o do ramal (desde y 195) -->
@@ -332,6 +359,12 @@
         <circle id="det-n" cx="54" cy="98" r="5" class="lamp" fill="var(--lamp-off)"/>
         <text x="45" y="102" text-anchor="end" class="svg-label">Det N</text>
         <text id="obs-mark" x="88" y="66" class="ag-obs" visibility="hidden">✕ obstrução</text>
+        <!-- obstruir a agulha (simula pedra/objeto entre ponta e trilho) -->
+        <g id="yb-obs" class="ybtn" role="button" tabindex="0" aria-pressed="false" transform="translate(6,110)">
+          <title>Obstruir a agulha (a ponta não encosta)</title>
+          <rect width="52" height="16" rx="8" class="ybtn-bg"/>
+          <text x="26" y="11.5" text-anchor="middle" class="ybtn-txt">obstruir</text>
+        </g>
       </g>
       <text x="335" y="276" text-anchor="middle" class="svg-label">Normal (linha principal)</text>
       <text x="335" y="234" text-anchor="middle" class="svg-label">Reversa (ramal, 30 km/h)</text>
@@ -345,9 +378,22 @@
         <circle id="lamp-y" r="6" class="lamp" fill="var(--lamp-off)"/>
         <circle id="lamp-g" r="6" class="lamp" fill="var(--lamp-off)"/>
       </g>
+      <!-- parar o trem: placa "pare" embaixo do sinal (posicionada pelo script) -->
+      <g id="yb-stop" class="ybtn stop" role="button" tabindex="0" data-cmd="vel 0">
+        <title>Parar o trem (velocidade 0)</title>
+        <path d="M -5 -12 H 5 L 12 -5 V 5 L 5 12 H -5 L -12 5 V -5 Z" class="ybtn-bg" filter="url(#f-sh-mini)"/>
+        <path d="M -5 0 H 5" class="ybtn-ico" stroke-width="3"/>
+        <text y="23" text-anchor="middle" class="ybtn-cap">parar</text>
+      </g>
       <!-- trem: locomotiva + 2 carros, montados pelo script -->
       <g id="train" visibility="hidden" filter="url(#f-sh-high)"></g>
       <text id="train-label" class="svg-label train-label" text-anchor="middle" visibility="hidden"></text>
+      <!-- so' aparece com o trem descarrilado -->
+      <g id="yb-trem" class="ybtn" role="button" tabindex="0" data-cmd="trem" visibility="hidden">
+        <title>Recolocar o trem nos trilhos</title>
+        <rect x="-36" y="-9" width="72" height="18" rx="9" class="ybtn-bg" filter="url(#f-sh-mini)"/>
+        <text y="3.5" text-anchor="middle" class="ybtn-txt">↺ Recolocar</text>
+      </g>
     </svg>
   </div>
 </div>
@@ -629,6 +675,7 @@
     set("lamp-r", { cx: hx, cy: hy - 13 });
     set("lamp-y", { cx: hx, cy: hy });
     set("lamp-g", { cx: hx, cy: hy + 13 });
+    $("yb-stop").setAttribute("transform", `translate(${hx.toFixed(1)} ${(hy + 42).toFixed(1)})`);
     // circuito de via: do sinal ate' o fim do AMV
     const len = P.volta.getTotalLength(), ini = S_SINAL / L.volta * len;
     $("occ-a").setAttribute("stroke-dasharray", `0 ${ini} ${len - ini} ${len}`);
@@ -820,6 +867,8 @@
     $("train-label").setAttribute("y", hp.y - 14);
     $("train-label").textContent = trem.desc ? "DESCARRILOU" : `${(trem.v * 3.6).toFixed(0)} km/h`;
     for (const id of ["train", "train-label"]) $(id).setAttribute("visibility", "visible");
+    $("yb-trem").setAttribute("visibility", trem.desc ? "visible" : "hidden");
+    if (trem.desc) $("yb-trem").setAttribute("transform", `translate(${hp.x.toFixed(1)} ${(hp.y - 36).toFixed(1)})`);
   }
   requestAnimationFrame(drawTrain);
 
@@ -851,6 +900,10 @@
       : "";
     $("b-occ").classList.toggle("active", !!occ);
     $("b-obs").classList.toggle("active", !!obs);
+    for (const [id, on] of [["yb-occ", occ], ["yb-obs", obs]]) {
+      $(id).classList.toggle("active", !!on);
+      $(id).setAttribute("aria-pressed", String(!!on));
+    }
   }
 
   // ---------- tempos ----------
@@ -905,6 +958,15 @@
   document.querySelectorAll("button[data-cmd]").forEach((b) => b.addEventListener("click", () => send(b.dataset.cmd)));
   $("b-occ").addEventListener("click", () => send(`occ ${occ ? 0 : 1}`));
   $("b-obs").addEventListener("click", () => send(`obs ${obs ? 0 : 1}`));
+  // botoes do patio: clique, Enter ou espaco
+  const yardBtn = (id, cmd) => {
+    const g = $(id), go = () => { if (!g.classList.contains("off")) send(cmd()); };
+    g.addEventListener("click", go);
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  };
+  for (const id of ["yb-amv", "yb-stop", "yb-trem"]) yardBtn(id, () => $(id).dataset.cmd);
+  yardBtn("yb-occ", () => `occ ${occ ? 0 : 1}`);
+  yardBtn("yb-obs", () => `obs ${obs ? 0 : 1}`);
   $("b-reboot").addEventListener("click", () => {
     if (confirm("Reiniciar a placa? O tempo, as medições e o estado voltam do zero.")) send("reiniciar");
   });
@@ -959,6 +1021,7 @@
       $("status").className = ev.connected ? "on" : "";
       document.querySelectorAll("button:not(.ui)").forEach((b) => (b.disabled = !ev.connected));
       $("lever").classList.toggle("off", !ev.connected);
+      document.querySelectorAll(".ybtn").forEach((g) => g.classList.toggle("off", !ev.connected));
       $("status").textContent = ev.connected ? "conectado à serial do Wokwi"
                                              : "sem conexão com o Wokwi (inicie o simulador)";
     }

@@ -1,6 +1,6 @@
 # Texto para inserir em Tópicos2.docx (capítulo 5)
 
-> Valores dos testes automáticos (`make test`) e do roteiro executado no Wokwi em 11/11/2026, ambos sobre o código atual. Falta só o print da Figura 6 (marcado com [PREENCHER]).
+> Valores dos testes automáticos (`make test`) e do roteiro executado no Wokwi (11 e 12/11/2026), ambos sobre o código atual.
 
 ## 5 TESTES E RESULTADOS
 
@@ -97,7 +97,7 @@ A latência da perda de detecção, de 253 µs, é medida a partir do instante e
 
 **Figura 6 - Painel web durante a execução do roteiro de testes**
 
-[PREENCHER: print do painel com a tabela "medido × calculado" visível]
+![Figura 6 - Painel web durante a execução do roteiro de testes](prints/painel.png)
 
 *Fonte - Próprio Autor (2026).*
 

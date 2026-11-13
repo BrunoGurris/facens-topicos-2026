@@ -1,0 +1,5 @@
+{
+  "marcas": { "boot": 0.7, "manobra": 5.88, "ramal": 32.23, "espera": 57.05, "emerg": 87.52, "obstr": 137.32, "dados": 144.24 },
+  "tm": { "lat_emg": [221, 221], "lat_perda": [289, 289], "lat_cmd": [394, 394], "manobra": [3107, 3107], "jit": 309 },
+  "duracao_s": 149.6
+}
